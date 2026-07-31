@@ -1,0 +1,34 @@
+# Python
+__pycache__/
+*.pyc
+.pytest_cache/
+
+# Environments
+venv/
+.venv/
+env/
+
+# Secrets
+.env
+!.env.example
+*.key
+
+# Local tooling
+.claude/settings.local.json
+.DS_Store
+
+# Generated / data
+*.log
+*.db
+*.zip
+output/
+data/cache/
+
+# Monitor run artifacts (logs, event CSVs, captured screenshots).
+# These contain activity data about the monitored account — keep them local.
+screenshots/
+screenshots_*/
+*.csv
+ig_log_*.txt
+selenium_ig*.txt
+log.txt
