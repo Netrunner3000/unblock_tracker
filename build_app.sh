@@ -44,5 +44,5 @@ if [[ "${1:-}" == "--install" ]]; then
   touch "/Applications/$APP_NAME.app"  # nudge Finder/Dock to refresh the cached icon
   echo "Installed: /Applications/$APP_NAME.app"
 else
-  echo "Run './build_app.sh --install' to copy it into /Applications."
+  echo "Run '$0 --install' to copy it into /Applications."
 fi
