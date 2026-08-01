@@ -8,27 +8,24 @@ venv/
 .venv/
 env/
 
-# Secrets
+# Local settings. config.json holds the user's own account and target handle,
+# so it never gets committed. Secrets aren't here at all — they live in the
+# macOS Keychain. config.example.json is the committed template.
+config.json
 .env
-!.env.example
 *.key
 
 # Local tooling
 .claude/settings.local.json
 .DS_Store
 
-# Generated / data
+# Run artifacts: logs, event CSVs, captured screenshots. These record activity
+# about the monitored account — keep them local.
+runs/
 *.log
+*.csv
 *.db
 *.zip
 output/
-data/cache/
-
-# Monitor run artifacts (logs, event CSVs, captured screenshots).
-# These contain activity data about the monitored account — keep them local.
-screenshots/
-screenshots_*/
-*.csv
-ig_log_*.txt
-selenium_ig*.txt
-log.txt
+build/
+dist/
