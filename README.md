@@ -37,6 +37,31 @@ specific browser (for example Brave) or a pinned `chromedriver`.
 python main.py
 ```
 
+Or build a standalone Mac app and launch it from Finder:
+
+```bash
+./build_app.sh --install
+```
+
+## Where your data lives
+
+Running from source keeps everything in the project folder (`config.json`,
+`runs/`). The packaged app writes to
+`~/Library/Application Support/Unblock Tracker/` instead — a bundle must never
+write inside itself, or the signature breaks and every reinstall wipes your
+settings. Secrets are in the Keychain either way.
+
+To check a build before trusting it with a password:
+
+```bash
+"dist/Unblock Tracker.app/Contents/MacOS/Unblock Tracker" --selftest
+```
+
+That confirms the icon shipped, the config path lands outside the bundle, and
+the Keychain backend survived packaging — keyring finds its backends through
+entry points, which PyInstaller cannot see without the hidden imports in
+`build_app.sh`.
+
 **Settings** — your account, the profile to watch, notification channel, pacing,
 browser and proxy behaviour. Save writes `config.json` and pushes the secrets
 into the Keychain.
@@ -72,7 +97,9 @@ Everything a run produces lands in `runs/` (configurable, git-ignored):
 ## Layout
 
 ```
-main.py                  entry point
+main.py                  entry point (--selftest checks a build)
+build_app.sh             PyInstaller build; --install copies to /Applications
+assets/make_icon.py      regenerates icon.icns (run manually)
 unblock_tracker/
   config.py              Settings dataclass, JSON load/save, validation
   secrets.py             Keychain wrapper

@@ -9,11 +9,30 @@ checkout cannot run until someone types them in.
 from __future__ import annotations
 
 import json
+import sys
 from dataclasses import asdict, dataclass, field, fields
 from pathlib import Path
 
+from . import APP_NAME
+
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
-CONFIG_PATH = PROJECT_ROOT / "config.json"
+
+
+def _data_root() -> Path:
+    """Where the user's config and run output live.
+
+    A packaged .app must never write inside its own bundle: that invalidates
+    the signature and every reinstall would wipe the settings. Frozen builds
+    use Application Support; running from source stays in the project folder,
+    which keeps development self-contained.
+    """
+    if getattr(sys, "frozen", False):
+        return Path.home() / "Library" / "Application Support" / APP_NAME
+    return PROJECT_ROOT
+
+
+DATA_ROOT = _data_root()
+CONFIG_PATH = DATA_ROOT / "config.json"
 
 CHECK_MODE_LOGIN = "login"
 CHECK_MODE_ANONYMOUS = "anonymous"
@@ -80,9 +99,9 @@ class Settings:
     # Derived paths
     # ------------------------------------------------------------------
     def resolved_data_dir(self) -> Path:
-        path = Path(self.data_dir)
+        path = Path(self.data_dir).expanduser()
         if not path.is_absolute():
-            path = PROJECT_ROOT / path
+            path = DATA_ROOT / path
         return path
 
     @property
@@ -154,4 +173,5 @@ def load(path: Path | None = None) -> Settings:
 
 def save(settings: Settings, path: Path | None = None) -> None:
     path = path or CONFIG_PATH
+    path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text(json.dumps(asdict(settings), indent=2) + "\n")

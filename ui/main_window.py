@@ -3,9 +3,10 @@
 from __future__ import annotations
 
 from PySide6.QtCore import Qt
+from PySide6.QtGui import QIcon
 from PySide6.QtWidgets import QMainWindow, QMessageBox, QStatusBar, QTabWidget
 
-from unblock_tracker import APP_NAME, config, secrets
+from unblock_tracker import APP_NAME, asset_path, config, secrets
 
 from .events_tab import EventsTab
 from .monitor_tab import MonitorTab
@@ -136,6 +137,12 @@ def run() -> int:
     QApplication.setAttribute(Qt.ApplicationAttribute.AA_DontShowIconsInMenus, False)
     app = QApplication(sys.argv)
     app.setApplicationName(APP_NAME)
+
+    # A packaged .app takes its Dock icon from the bundle; this covers the
+    # case of running from source, where there is no bundle to read.
+    icon_file = asset_path("icon.icns")
+    if icon_file.exists():
+        app.setWindowIcon(QIcon(str(icon_file)))
 
     window = MainWindow()
     window.show()
