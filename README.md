@@ -129,7 +129,7 @@ uv pip install -r requirements-dev.txt
 .venv/bin/python -m pytest
 ```
 
-69 tests, about two seconds. Nothing in the suite touches the network, a
+80 tests, about two seconds. Nothing in the suite touches the network, a
 browser, Instagram, or your real Keychain.
 
 - **`tests/fakes.py`** replaces `checker.build` and `notifiers.build`, the only
@@ -140,6 +140,9 @@ browser, Instagram, or your real Keychain.
   That guard is not paranoia: with the fixture disabled the secrets tests
   happily write to the real login Keychain.
 - Qt runs offscreen, so the UI tests need no display.
+- `test_help.py` guards the guide against drift: every status label it
+  describes must exist in `checker`, and every settings control it names must
+  exist in the form.
 
 Engine tests run on a worker thread with a timeout, so a loop that fails to
 terminate fails the test instead of hanging the suite.
@@ -173,6 +176,7 @@ main.py                  entry point (--selftest checks a build)
 build_app.sh             PyInstaller build; --install copies to /Applications
 config.example.json      committed template; every identity field blank
 tests/                   pytest suite; fakes.py stubs the browser and notifiers
+docs/GUIDE.md            the user guide, shown by the Help button
 assets/
   make_icon.py           regenerates icon.icns (run manually; icon.iconset
                          is an intermediate and is git-ignored)
@@ -185,6 +189,7 @@ unblock_tracker/
   monitor.py             the run loop and event store
 ui/
   theme.py               palette, stylesheet and layout helpers
+  help_dialog.py         renders docs/GUIDE.md in-app
   main_window.py         window and tab wiring
   settings_tab.py        the settings form
   monitor_tab.py         live status and log
