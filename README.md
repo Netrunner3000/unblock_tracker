@@ -49,9 +49,13 @@ Or build a standalone Mac app and install it:
 
 `build_app.sh` `cd`s to its own folder, so it works from any directory — only
 the `./` prefix requires you to be here. Once installed it's in Launchpad and
-Spotlight as **Unblock Tracker**. Without `--install` the app is left in
-`dist/`, which every build deletes and recreates, so install it rather than
-launching from there.
+Spotlight as **Unblock Tracker**. `--install` also deletes `build/` and
+`dist.noindex/` afterwards, so no second copy of the app is left inside
+`~/Documents` for Spotlight to index as a duplicate.
+
+Without `--install` the app stays in `dist.noindex/`. The name is deliberate:
+Spotlight skips directories ending in `.noindex`, so a built-but-not-installed
+app never appears alongside the real one.
 
 ## The user guide
 
@@ -152,7 +156,7 @@ terminate fails the test instead of hanging the suite.
 ## Verifying a build
 
 ```bash
-"dist/Unblock Tracker.app/Contents/MacOS/Unblock Tracker" --selftest
+"dist.noindex/Unblock Tracker.app/Contents/MacOS/Unblock Tracker" --selftest
 ```
 
 Confirms the icon shipped, the config path lands outside the bundle, and the

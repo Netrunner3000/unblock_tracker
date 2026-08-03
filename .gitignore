@@ -32,6 +32,7 @@ output/
 # so the script is the source of truth, not a checked-in spec file.
 build/
 dist/
+dist.noindex/
 *.spec
 
 # iconutil's input folder — a pure intermediate. icon.icns is the committed
