@@ -1,5 +1,7 @@
 # Unblock Tracker
 
+
+![Screenshot](docs/screenshot.png)
 A PySide6 desktop app that watches whether a given Instagram profile is
 reachable from your account, records every status change, and can notify you
 over Telegram or Pushbullet when it changes.
