@@ -6,13 +6,11 @@ the monitor refuses to start until they are filled in.
 
 from __future__ import annotations
 
-from PySide6.QtCore import Signal
+from PySide6.QtCore import Qt, Signal
 from PySide6.QtWidgets import (
     QCheckBox,
     QComboBox,
     QFileDialog,
-    QFormLayout,
-    QGroupBox,
     QHBoxLayout,
     QLabel,
     QLineEdit,
@@ -26,6 +24,10 @@ from PySide6.QtWidgets import (
 
 from unblock_tracker import config, notifiers, secrets
 
+from . import theme
+
+FIELD_MIN = 240
+
 
 class SecretField(QWidget):
     """A masked line edit with a reveal toggle, backed by the Keychain."""
@@ -34,14 +36,16 @@ class SecretField(QWidget):
         super().__init__(parent)
         layout = QHBoxLayout(self)
         layout.setContentsMargins(0, 0, 0, 0)
+        layout.setSpacing(8)
 
         self.edit = QLineEdit()
         self.edit.setEchoMode(QLineEdit.EchoMode.Password)
         self.edit.setPlaceholderText(placeholder)
+        self.edit.setMinimumWidth(FIELD_MIN)
 
         self.toggle = QPushButton("Show")
         self.toggle.setCheckable(True)
-        self.toggle.setFixedWidth(60)
+        self.toggle.setFixedWidth(66)
         self.toggle.toggled.connect(self._on_toggle)
 
         layout.addWidget(self.edit, 1)
@@ -59,27 +63,40 @@ class SecretField(QWidget):
     def setText(self, value: str) -> None:  # noqa: N802 - matches Qt naming
         self.edit.setText(value)
 
+    def setEnabled(self, enabled: bool) -> None:  # noqa: N802 - matches Qt naming
+        self.edit.setEnabled(enabled)
+        self.toggle.setEnabled(enabled)
 
-def _browse_row(edit: QLineEdit, caption: str, directory: bool = False) -> QWidget:
-    """A line edit plus a Browse… button."""
+
+def _row(*widgets, stretch_last: bool = False) -> QWidget:
+    """Lay widgets out side by side inside one form field."""
     container = QWidget()
     layout = QHBoxLayout(container)
     layout.setContentsMargins(0, 0, 0, 0)
+    layout.setSpacing(8)
+    for widget in widgets:
+        layout.addWidget(widget)
+    if not stretch_last:
+        layout.addStretch(1)
+    return container
+
+
+def _browse_row(edit: QLineEdit, caption: str, directory: bool = False) -> QWidget:
+    """A line edit plus a Browse… button."""
+    edit.setMinimumWidth(FIELD_MIN)
     button = QPushButton("Browse…")
-    button.setFixedWidth(90)
+    button.setFixedWidth(96)
 
     def pick() -> None:
         if directory:
-            chosen = QFileDialog.getExistingDirectory(container, caption, edit.text())
+            chosen = QFileDialog.getExistingDirectory(edit, caption, edit.text())
         else:
-            chosen, _ = QFileDialog.getOpenFileName(container, caption, edit.text())
+            chosen, _ = QFileDialog.getOpenFileName(edit, caption, edit.text())
         if chosen:
             edit.setText(chosen)
 
     button.clicked.connect(pick)
-    layout.addWidget(edit, 1)
-    layout.addWidget(button)
-    return container
+    return _row(edit, button, stretch_last=True)
 
 
 class SettingsTab(QWidget):
@@ -96,104 +113,120 @@ class SettingsTab(QWidget):
     # ------------------------------------------------------------------
     def _build(self) -> None:
         outer = QVBoxLayout(self)
+        outer.setContentsMargins(0, 0, 0, 0)
+        outer.setSpacing(0)
 
         scroll = QScrollArea()
         scroll.setWidgetResizable(True)
         scroll.setFrameShape(QScrollArea.Shape.NoFrame)
-        body = QWidget()
-        layout = QVBoxLayout(body)
-        layout.setSpacing(14)
+        scroll.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
 
-        layout.addWidget(self._account_group())
-        layout.addWidget(self._target_group())
-        layout.addWidget(self._notify_group())
-        layout.addWidget(self._schedule_group())
-        layout.addWidget(self._browser_group())
-        layout.addWidget(self._proxy_group())
-        layout.addWidget(self._output_group())
-        layout.addStretch(1)
+        page, column = theme.column()
+        column.setContentsMargins(24, 20, 24, 24)
 
-        scroll.setWidget(body)
+        for title, builder in (
+            ("Your Instagram account", self._account_card),
+            ("Profile to watch", self._target_card),
+            ("Notifications", self._notify_card),
+            ("Schedule", self._schedule_card),
+            ("Browser", self._browser_card),
+            ("Proxies", self._proxy_card),
+            ("Output", self._output_card),
+        ):
+            column.addWidget(theme.section_title(title))
+            column.addWidget(builder())
+        column.addStretch(1)
+
+        scroll.setWidget(page)
         outer.addWidget(scroll, 1)
+        outer.addWidget(self._footer())
 
-        footer = QHBoxLayout()
-        self.keychain_label = QLabel(f"Secrets: macOS Keychain ({secrets.backend_name()})")
-        self.keychain_label.setStyleSheet("color: palette(mid);")
+    def _footer(self) -> QWidget:
+        bar = QWidget()
+        layout = QHBoxLayout(bar)
+        layout.setContentsMargins(24, 10, 24, 14)
+
+        self.keychain_label = QLabel(
+            f"Secrets are stored in the macOS Keychain ({secrets.backend_name()})"
+        )
+        self.keychain_label.setObjectName("hint")
+
         self.save_button = QPushButton("Save settings")
-        self.save_button.setDefault(True)
+        self.save_button.setObjectName("primary")
+        self.save_button.setMinimumWidth(140)
         self.save_button.clicked.connect(self.save)
-        footer.addWidget(self.keychain_label)
-        footer.addStretch(1)
-        footer.addWidget(self.save_button)
-        outer.addLayout(footer)
 
-    # -- groups ---------------------------------------------------------
-    def _account_group(self) -> QGroupBox:
-        group = QGroupBox("Your Instagram account")
-        form = QFormLayout(group)
+        layout.addWidget(self.keychain_label)
+        layout.addStretch(1)
+        layout.addWidget(self.save_button)
+        return bar
+
+    # -- cards ----------------------------------------------------------
+    def _account_card(self) -> QWidget:
+        frame, layout = theme.card()
+        form = theme.form()
 
         self.check_mode = QComboBox()
-        self.check_mode.addItem("Logged in (Selenium, accurate)", config.CHECK_MODE_LOGIN)
-        self.check_mode.addItem(
-            "Anonymous (public page only, no credentials)", config.CHECK_MODE_ANONYMOUS
-        )
+        self.check_mode.addItem("Logged in — accurate, needs credentials", config.CHECK_MODE_LOGIN)
+        self.check_mode.addItem("Anonymous — public page only", config.CHECK_MODE_ANONYMOUS)
         self.check_mode.currentIndexChanged.connect(self._sync_mode)
 
         self.instagram_username = QLineEdit()
         self.instagram_username.setPlaceholderText("your own Instagram handle")
+        self.instagram_username.setMinimumWidth(FIELD_MIN)
         self.instagram_password = SecretField("stored in your login Keychain")
 
-        form.addRow("Check mode", self.check_mode)
-        form.addRow("Username", self.instagram_username)
-        form.addRow("Password", self.instagram_password)
+        form.addRow(theme.label("Check mode"), self.check_mode)
+        form.addRow(theme.label("Username"), self.instagram_username)
+        form.addRow(theme.label("Password"), self.instagram_password)
+        layout.addLayout(form)
 
-        note = QLabel(
-            "Anonymous mode needs no credentials but only sees what a "
-            "logged-out visitor sees, and cannot take screenshots."
+        self.mode_hint = theme.hint(
+            "Anonymous mode needs no credentials, but only sees what a logged-out "
+            "visitor sees and cannot take screenshots."
         )
-        note.setWordWrap(True)
-        note.setStyleSheet("color: palette(mid);")
-        form.addRow(note)
-        return group
+        layout.addWidget(self.mode_hint)
+        return frame
 
-    def _target_group(self) -> QGroupBox:
-        group = QGroupBox("Profile to watch")
-        form = QFormLayout(group)
+    def _target_card(self) -> QWidget:
+        frame, layout = theme.card()
+        form = theme.form()
         self.target_profile = QLineEdit()
         self.target_profile.setPlaceholderText("handle without the @")
-        form.addRow("Target profile", self.target_profile)
-        return group
+        self.target_profile.setMinimumWidth(FIELD_MIN)
+        form.addRow(theme.label("Target profile"), self.target_profile)
+        layout.addLayout(form)
+        return frame
 
-    def _notify_group(self) -> QGroupBox:
-        group = QGroupBox("Notifications")
-        layout = QVBoxLayout(group)
+    def _notify_card(self) -> QWidget:
+        frame, layout = theme.card()
 
-        top = QFormLayout()
+        form = theme.form()
         self.notifier = QComboBox()
         self.notifier.addItem("Off", config.NOTIFIER_NONE)
         self.notifier.addItem("Telegram", config.NOTIFIER_TELEGRAM)
         self.notifier.addItem("Pushbullet", config.NOTIFIER_PUSHBULLET)
         self.notifier.currentIndexChanged.connect(self._sync_notifier)
-        top.addRow("Send alerts via", self.notifier)
-        layout.addLayout(top)
+        form.addRow(theme.label("Send alerts via"), self.notifier)
+        layout.addLayout(form)
 
-        # Show/hide rather than a stacked widget, so the group shrinks to
-        # nothing when notifications are off instead of holding empty space.
+        # Shown/hidden rather than stacked, so the card collapses when off.
         self.telegram_box = QWidget()
-        telegram_form = QFormLayout(self.telegram_box)
-        telegram_form.setContentsMargins(0, 0, 0, 0)
+        telegram_form = theme.form()
+        self.telegram_box.setLayout(telegram_form)
         self.telegram_token = SecretField("token from @BotFather")
         self.telegram_chat_id = QLineEdit()
         self.telegram_chat_id.setPlaceholderText("numeric chat ID")
-        telegram_form.addRow("Bot token", self.telegram_token)
-        telegram_form.addRow("Chat ID", self.telegram_chat_id)
+        self.telegram_chat_id.setMinimumWidth(FIELD_MIN)
+        telegram_form.addRow(theme.label("Bot token"), self.telegram_token)
+        telegram_form.addRow(theme.label("Chat ID"), self.telegram_chat_id)
         layout.addWidget(self.telegram_box)
 
         self.pushbullet_box = QWidget()
-        pushbullet_form = QFormLayout(self.pushbullet_box)
-        pushbullet_form.setContentsMargins(0, 0, 0, 0)
+        pushbullet_form = theme.form()
+        self.pushbullet_box.setLayout(pushbullet_form)
         self.pushbullet_token = SecretField("token from pushbullet.com/account")
-        pushbullet_form.addRow("Access token", self.pushbullet_token)
+        pushbullet_form.addRow(theme.label("Access token"), self.pushbullet_token)
         layout.addWidget(self.pushbullet_box)
 
         self.test_button = QPushButton("Send test notification")
@@ -202,11 +235,11 @@ class SettingsTab(QWidget):
         row.addStretch(1)
         row.addWidget(self.test_button)
         layout.addLayout(row)
-        return group
+        return frame
 
-    def _schedule_group(self) -> QGroupBox:
-        group = QGroupBox("Schedule")
-        form = QFormLayout(group)
+    def _schedule_card(self) -> QWidget:
+        frame, layout = theme.card()
+        form = theme.form()
 
         self.interval_min = QSpinBox()
         self.interval_min.setRange(1, 3600)
@@ -214,52 +247,38 @@ class SettingsTab(QWidget):
         self.interval_max = QSpinBox()
         self.interval_max.setRange(1, 3600)
         self.interval_max.setSuffix(" s")
-        interval_row = QWidget()
-        interval_layout = QHBoxLayout(interval_row)
-        interval_layout.setContentsMargins(0, 0, 0, 0)
-        interval_layout.addWidget(self.interval_min)
-        interval_layout.addWidget(QLabel("to"))
-        interval_layout.addWidget(self.interval_max)
-        interval_layout.addStretch(1)
 
         self.max_runtime = QSpinBox()
         self.max_runtime.setRange(0, 10080)
         self.max_runtime.setSuffix(" min")
         self.max_runtime.setSpecialValueText("no limit")
-        runtime_row = QWidget()
-        runtime_layout = QHBoxLayout(runtime_row)
-        runtime_layout.setContentsMargins(0, 0, 0, 0)
-        runtime_layout.addWidget(self.max_runtime)
-        runtime_layout.addStretch(1)
 
-        self.stop_on_unblock = QCheckBox("Stop the run once the profile becomes visible")
-
-        self.night_break = QCheckBox("Pause overnight")
         self.night_start = QSpinBox()
         self.night_start.setRange(0, 23)
         self.night_start.setSuffix(":00")
         self.night_end = QSpinBox()
         self.night_end.setRange(0, 23)
         self.night_end.setSuffix(":00")
-        night_row = QWidget()
-        night_layout = QHBoxLayout(night_row)
-        night_layout.setContentsMargins(0, 0, 0, 0)
-        night_layout.addWidget(self.night_start)
-        night_layout.addWidget(QLabel("to"))
-        night_layout.addWidget(self.night_end)
-        night_layout.addStretch(1)
-        self.night_break.toggled.connect(night_row.setEnabled)
+        self.quiet_row = _row(self.night_start, QLabel("to"), self.night_end)
 
-        form.addRow("Wait between checks", interval_row)
-        form.addRow("Maximum run time", runtime_row)
-        form.addRow("", self.stop_on_unblock)
-        form.addRow("", self.night_break)
-        form.addRow("Quiet hours", night_row)
-        return group
+        self.stop_on_unblock = QCheckBox("Stop the run once the profile becomes visible")
+        self.night_break = QCheckBox("Pause overnight")
+        self.night_break.toggled.connect(self.quiet_row.setEnabled)
 
-    def _browser_group(self) -> QGroupBox:
-        group = QGroupBox("Browser (login mode)")
-        form = QFormLayout(group)
+        form.addRow(
+            theme.label("Wait between checks"),
+            _row(self.interval_min, QLabel("to"), self.interval_max),
+        )
+        form.addRow(theme.label("Maximum run time"), _row(self.max_runtime))
+        form.addRow(theme.label(""), self.stop_on_unblock)
+        form.addRow(theme.label(""), self.night_break)
+        form.addRow(theme.label("Quiet hours"), self.quiet_row)
+        layout.addLayout(form)
+        return frame
+
+    def _browser_card(self) -> QWidget:
+        frame, layout = theme.card()
+        form = theme.form()
 
         self.headless = QCheckBox("Run the browser hidden")
         self.rotate_user_agent = QCheckBox("Rotate the user agent between sessions")
@@ -278,41 +297,50 @@ class SettingsTab(QWidget):
         self.login_attempts = QSpinBox()
         self.login_attempts.setRange(1, 10)
 
-        form.addRow("", self.headless)
-        form.addRow("", self.rotate_user_agent)
-        form.addRow("", self.verify_login)
-        form.addRow("Login attempts", self.login_attempts)
-        form.addRow("Restart browser after", self.restart_after)
+        form.addRow(theme.label(""), self.headless)
+        form.addRow(theme.label(""), self.rotate_user_agent)
+        form.addRow(theme.label(""), self.verify_login)
+        form.addRow(theme.label("Login attempts"), _row(self.login_attempts))
+        form.addRow(theme.label("Restart browser after"), _row(self.restart_after))
         form.addRow(
-            "Browser binary", _browse_row(self.browser_binary, "Select a browser binary")
+            theme.label("Browser binary"),
+            _browse_row(self.browser_binary, "Select a browser binary"),
         )
         form.addRow(
-            "chromedriver", _browse_row(self.chromedriver_path, "Select chromedriver")
+            theme.label("chromedriver"),
+            _browse_row(self.chromedriver_path, "Select chromedriver"),
         )
-        return group
+        layout.addLayout(form)
 
-    def _proxy_group(self) -> QGroupBox:
-        group = QGroupBox("Proxies")
-        form = QFormLayout(group)
+        self.browser_hint = theme.hint("These settings apply to logged-in mode only.")
+        layout.addWidget(self.browser_hint)
+        return frame
+
+    def _proxy_card(self) -> QWidget:
+        frame, layout = theme.card()
+        form = theme.form()
         self.use_proxy = QCheckBox("Route the browser through a fetched proxy pool")
         self.proxy_source = QLineEdit()
         self.proxy_source.setPlaceholderText("URL returning one proxy per line")
+        self.proxy_source.setMinimumWidth(FIELD_MIN)
         self.use_proxy.toggled.connect(self.proxy_source.setEnabled)
-        form.addRow("", self.use_proxy)
-        form.addRow("Proxy list URL", self.proxy_source)
-        return group
+        form.addRow(theme.label(""), self.use_proxy)
+        form.addRow(theme.label("Proxy list URL"), self.proxy_source)
+        layout.addLayout(form)
+        return frame
 
-    def _output_group(self) -> QGroupBox:
-        group = QGroupBox("Output")
-        form = QFormLayout(group)
+    def _output_card(self) -> QWidget:
+        frame, layout = theme.card()
+        form = theme.form()
         self.save_screenshots = QCheckBox("Capture a screenshot on every status change")
         self.data_dir = QLineEdit()
-        form.addRow("", self.save_screenshots)
+        form.addRow(theme.label(""), self.save_screenshots)
         form.addRow(
-            "Run data folder",
+            theme.label("Run data folder"),
             _browse_row(self.data_dir, "Select a folder for logs and screenshots", True),
         )
-        return group
+        layout.addLayout(form)
+        return frame
 
     # -- state sync -----------------------------------------------------
     def _sync_mode(self) -> None:
@@ -350,6 +378,7 @@ class SettingsTab(QWidget):
         self.max_runtime.setValue(settings.max_runtime_minutes)
         self.stop_on_unblock.setChecked(settings.stop_on_unblock)
         self.night_break.setChecked(settings.night_break_enabled)
+        self.quiet_row.setEnabled(settings.night_break_enabled)
         self.night_start.setValue(settings.night_break_start_hour)
         self.night_end.setValue(settings.night_break_end_hour)
 

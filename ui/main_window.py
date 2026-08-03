@@ -8,6 +8,7 @@ from PySide6.QtWidgets import QMainWindow, QMessageBox, QStatusBar, QTabWidget
 
 from unblock_tracker import APP_NAME, asset_path, config, secrets
 
+from . import theme
 from .events_tab import EventsTab
 from .monitor_tab import MonitorTab
 from .settings_tab import SettingsTab
@@ -21,9 +22,12 @@ class MainWindow(QMainWindow):
         self.worker: MonitorWorker | None = None
 
         self.setWindowTitle(APP_NAME)
-        self.resize(940, 720)
+        self.resize(1000, 780)
+        self.setMinimumSize(720, 560)
 
         self.tabs = QTabWidget()
+        self.tabs.tabBar().setExpanding(False)
+        self.tabs.tabBar().setDrawBase(False)
         self.monitor_tab = MonitorTab()
         self.events_tab = EventsTab(self.settings)
         self.settings_tab = SettingsTab(self.settings)
@@ -137,6 +141,7 @@ def run() -> int:
     QApplication.setAttribute(Qt.ApplicationAttribute.AA_DontShowIconsInMenus, False)
     app = QApplication(sys.argv)
     app.setApplicationName(APP_NAME)
+    theme.apply(app)
 
     # A packaged .app takes its Dock icon from the bundle; this covers the
     # case of running from source, where there is no bundle to read.

@@ -151,6 +151,7 @@ unblock_tracker/
   notifiers.py           Telegram / Pushbullet / off
   monitor.py             the run loop and event store
 ui/
+  theme.py               palette, stylesheet and layout helpers
   main_window.py         window and tab wiring
   settings_tab.py        the settings form
   monitor_tab.py         live status and log
@@ -161,6 +162,26 @@ ui/
 The engine has no Qt dependency — `MonitorEngine` talks to callers through
 plain callbacks, so it can be driven by a test or a headless runner just as
 easily as by the GUI.
+
+## Interface notes
+
+The app runs on Qt's **Fusion** style, not the native macOS one, and follows
+the system light/dark appearance. Fusion is deliberate: native widgets fight a
+stylesheet, and macOS defaults `QFormLayout` to `FieldsStayAtSizeHint`, which
+pins inputs to their minimum width and elides placeholder text into `...`.
+Fusion behaves identically everywhere, so a rendered test matches what ships.
+
+Two consequences worth knowing before editing `ui/theme.py`:
+
+- Styling a subcontrol (`::indicator`, `::drop-down`) hands drawing to the
+  stylesheet, which then draws no checkmark or arrow unless given an image.
+  Fusion's own drawing isn't a fallback — it derives outlines from the window
+  colour, which is near-black in dark mode, so an unchecked box comes out
+  invisible. `theme.glyphs()` paints the tick and chevrons with QPainter at
+  startup and hands the stylesheet their paths.
+- Content sits in a width-capped centred column (`theme.column()`). It uses
+  stretch spacers rather than `AlignHCenter`, which would give the column its
+  size hint and collapse a sparse tab to a sliver.
 
 ## Notes
 
