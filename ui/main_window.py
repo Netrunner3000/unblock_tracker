@@ -3,13 +3,20 @@
 from __future__ import annotations
 
 from PySide6.QtCore import Qt
-from PySide6.QtGui import QIcon
-from PySide6.QtWidgets import QMainWindow, QMessageBox, QStatusBar, QTabWidget
+from PySide6.QtGui import QIcon, QKeySequence, QShortcut
+from PySide6.QtWidgets import (
+    QMainWindow,
+    QMessageBox,
+    QPushButton,
+    QStatusBar,
+    QTabWidget,
+)
 
 from unblock_tracker import APP_NAME, asset_path, config, secrets
 
 from . import theme
 from .events_tab import EventsTab
+from .help_dialog import HelpDialog
 from .monitor_tab import MonitorTab
 from .settings_tab import SettingsTab
 from .worker import MonitorWorker
@@ -25,9 +32,18 @@ class MainWindow(QMainWindow):
         self.resize(1000, 780)
         self.setMinimumSize(720, 560)
 
+        self.help_window: HelpDialog | None = None
+
         self.tabs = QTabWidget()
         self.tabs.tabBar().setExpanding(False)
         self.tabs.tabBar().setDrawBase(False)
+
+        # In the tab bar's corner so it is reachable from every tab.
+        self.help_button = QPushButton("How to use")
+        self.help_button.setObjectName("cornerButton")
+        self.help_button.setToolTip("Open the user guide  (⌘?)")
+        self.help_button.clicked.connect(self.show_help)
+        self.tabs.setCornerWidget(self.help_button, Qt.Corner.TopRightCorner)
         self.monitor_tab = MonitorTab()
         self.events_tab = EventsTab(self.settings)
         self.settings_tab = SettingsTab(self.settings)
@@ -43,6 +59,8 @@ class MainWindow(QMainWindow):
         self.monitor_tab.stop_requested.connect(self.stop)
         self.settings_tab.settings_saved.connect(self._on_settings_saved)
 
+        QShortcut(QKeySequence.StandardKey.HelpContents, self, self.show_help)
+
         self._apply_settings(self.settings)
 
         if not self.settings.target_profile:
@@ -50,6 +68,15 @@ class MainWindow(QMainWindow):
             self.statusBar().showMessage(
                 "Fill in your account and the profile to watch, then save.", 10000
             )
+
+    # ------------------------------------------------------------------
+    def show_help(self) -> None:
+        """Open the guide, reusing the window if it is already up."""
+        if self.help_window is None:
+            self.help_window = HelpDialog(self)
+        self.help_window.show()
+        self.help_window.raise_()
+        self.help_window.activateWindow()
 
     # ------------------------------------------------------------------
     def _apply_settings(self, settings: config.Settings) -> None:

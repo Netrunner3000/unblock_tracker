@@ -51,6 +51,16 @@ Spotlight as **Unblock Tracker**. Without `--install` the app is left in
 `dist/`, which every build deletes and recreates, so install it rather than
 launching from there.
 
+## The user guide
+
+[`docs/GUIDE.md`](docs/GUIDE.md) is the end-user walkthrough: filling in
+settings, what each status means, tuning the schedule, and troubleshooting.
+
+It is reachable in the app from the **How to use** button in the tab bar
+corner (or ⌘?), which renders that same file — one copy of the text, readable
+both in-app and on disk. `build_app.sh` bundles it, and `--selftest` fails if a
+build ships without it.
+
 ## First run
 
 The app opens on **Settings** with every field blank. Fill in your username and

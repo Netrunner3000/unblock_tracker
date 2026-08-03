@@ -23,6 +23,7 @@ pyinstaller --noconfirm --clean --windowed \
   --icon assets/icon.icns \
   --osx-bundle-identifier "$BUNDLE_ID" \
   --add-data "assets/icon.icns:assets" \
+  --add-data "docs/GUIDE.md:docs" \
   --hidden-import keyring.backends.macOS \
   --hidden-import keyring.backends.null \
   --exclude-module PySide6.QtWebEngineCore \

@@ -114,6 +114,9 @@ def qpalette(p: Palette) -> QPalette:
     pal.setColor(roles.ToolTipBase, QColor(p.card))
     pal.setColor(roles.ToolTipText, QColor(p.text))
     pal.setColor(roles.PlaceholderText, QColor(p.muted))
+    # Anchor colour comes from the palette, not from any document stylesheet.
+    pal.setColor(roles.Link, QColor(p.accent))
+    pal.setColor(roles.LinkVisited, QColor(p.accent))
 
     # Fusion derives control outlines (checkbox frames, spin arrows) from these.
     # Leaving them at Qt's light-theme defaults makes an unchecked box invisible
@@ -287,6 +290,9 @@ def stylesheet(p: Palette) -> str:
     QPushButton:hover {{ border-color: {p.accent}; }}
     QPushButton:pressed {{ background: {p.border}; }}
     QPushButton:disabled {{ color: {p.muted}; border-color: {p.border}; }}
+    /* Sits in the tab bar corner; needs breathing room from the edge. */
+    QPushButton#cornerButton {{ margin: 6px 12px 6px 6px; }}
+
     QPushButton#primary {{
         background: {p.accent};
         border: 1px solid {p.accent};
