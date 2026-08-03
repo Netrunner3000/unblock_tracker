@@ -112,6 +112,28 @@ relocates. The run folder is configurable in Settings either way, and contains:
 All of it is git-ignored: it records activity about the monitored account and
 should stay local.
 
+## Tests
+
+```bash
+uv pip install -r requirements-dev.txt
+.venv/bin/python -m pytest
+```
+
+69 tests, about two seconds. Nothing in the suite touches the network, a
+browser, Instagram, or your real Keychain.
+
+- **`tests/fakes.py`** replaces `checker.build` and `notifiers.build`, the only
+  two places the engine reaches outside itself, so the whole monitor loop runs
+  against a scripted sequence of results.
+- **`tests/conftest.py`** swaps the Keychain for an in-memory backend via an
+  autouse fixture, and `test_secrets.py` asserts that swap actually happened.
+  That guard is not paranoia: with the fixture disabled the secrets tests
+  happily write to the real login Keychain.
+- Qt runs offscreen, so the UI tests need no display.
+
+Engine tests run on a worker thread with a timeout, so a loop that fails to
+terminate fails the test instead of hanging the suite.
+
 ## Verifying a build
 
 ```bash
@@ -140,6 +162,7 @@ rm -rf ~/Library/Application\ Support/pyinstaller
 main.py                  entry point (--selftest checks a build)
 build_app.sh             PyInstaller build; --install copies to /Applications
 config.example.json      committed template; every identity field blank
+tests/                   pytest suite; fakes.py stubs the browser and notifiers
 assets/
   make_icon.py           regenerates icon.icns (run manually; icon.iconset
                          is an intermediate and is git-ignored)
