@@ -147,6 +147,13 @@ Most people never need these.
 
 - *Run the browser hidden* — off shows you the browser window, which is useful
   when a login is failing and you cannot see why.
+- *Stay signed in between runs* — on by default, and worth leaving on. The app
+  keeps Instagram's login cookies in its own browser profile and reuses them,
+  so it signs in once rather than on every run and every browser restart.
+  Repeated automated sign-ins are the likeliest thing to get an account
+  challenged, so this meaningfully lowers the risk. The cookies are stored in
+  `~/Library/Application Support/Unblock Tracker/sessions/`, separate for each
+  account. *Forget saved session* deletes them and forces a fresh sign-in.
 - *Rotate the user agent* — varies the browser fingerprint between sessions.
 - *Confirm the session is logged in* — verifies the login actually took before
   trusting any result, and retries if not.
@@ -167,6 +174,10 @@ Turn off *Run the browser hidden* and start again — you will usually see the
 reason on screen: a verification prompt, a suspicious-login challenge, or
 two-factor authentication. The app cannot answer those for you. Note that
 Instagram tends to challenge logins from an unfamiliar browser profile.
+
+If it used to work and suddenly does not, the saved session has probably been
+invalidated. Press **Forget saved session** in Settings and start again — that
+clears the stored cookies and signs in from scratch.
 
 **Two-factor authentication is on.**
 Logged-in mode cannot complete a 2FA challenge. Use Anonymous mode, or a
@@ -197,6 +208,11 @@ folder to confirm checks are actually happening.
 | Settings | `~/Library/Application Support/Unblock Tracker/config.json` | `config.json` in the project folder |
 | Events, logs, screenshots | `…/Unblock Tracker/runs/` | `runs/` in the project folder |
 | Password and tokens | macOS Keychain | macOS Keychain |
+| Saved login session | `…/Unblock Tracker/sessions/` | same |
+
+The saved session is deliberately kept in Application Support in both cases:
+login cookies are close enough to a password, and the project folder is under
+version control and gets copied to cloud backup.
 
 The two copies keep **separate settings**, so configuring one does not
 configure the other. Keychain secrets are shared between them.

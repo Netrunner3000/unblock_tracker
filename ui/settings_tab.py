@@ -22,7 +22,7 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
-from unblock_tracker import config, notifiers, secrets
+from unblock_tracker import checker, config, notifiers, secrets
 
 from . import theme
 
@@ -281,8 +281,15 @@ class SettingsTab(QWidget):
         form = theme.form()
 
         self.headless = QCheckBox("Run the browser hidden")
+        self.persist_session = QCheckBox("Stay signed in between runs")
         self.rotate_user_agent = QCheckBox("Rotate the user agent between sessions")
         self.verify_login = QCheckBox("Confirm the session is logged in before checking")
+
+        self.forget_button = QPushButton("Forget saved session")
+        self.forget_button.setToolTip(
+            "Delete the stored login cookies so the next run signs in fresh."
+        )
+        self.forget_button.clicked.connect(self._forget_session)
 
         self.browser_binary = QLineEdit()
         self.browser_binary.setPlaceholderText("blank = system Chrome")
@@ -298,8 +305,10 @@ class SettingsTab(QWidget):
         self.login_attempts.setRange(1, 10)
 
         form.addRow(theme.label(""), self.headless)
+        form.addRow(theme.label(""), self.persist_session)
         form.addRow(theme.label(""), self.rotate_user_agent)
         form.addRow(theme.label(""), self.verify_login)
+        form.addRow(theme.label("Saved session"), _row(self.forget_button))
         form.addRow(theme.label("Login attempts"), _row(self.login_attempts))
         form.addRow(theme.label("Restart browser after"), _row(self.restart_after))
         form.addRow(
@@ -312,7 +321,13 @@ class SettingsTab(QWidget):
         )
         layout.addLayout(form)
 
-        self.browser_hint = theme.hint("These settings apply to logged-in mode only.")
+        self.browser_hint = theme.hint(
+            "These settings apply to logged-in mode only. Staying signed in reuses "
+            "Instagram's cookies instead of signing in again on every run and every "
+            "browser restart — repeated sign-ins are the likeliest thing to get an "
+            "account challenged. Cookies are stored outside this folder, in "
+            "Application Support."
+        )
         layout.addWidget(self.browser_hint)
         return frame
 
@@ -383,6 +398,7 @@ class SettingsTab(QWidget):
         self.night_end.setValue(settings.night_break_end_hour)
 
         self.headless.setChecked(settings.headless)
+        self.persist_session.setChecked(settings.persist_session)
         self.rotate_user_agent.setChecked(settings.rotate_user_agent)
         self.verify_login.setChecked(settings.verify_login)
         self.login_attempts.setValue(settings.login_attempts)
@@ -416,6 +432,7 @@ class SettingsTab(QWidget):
             night_break_start_hour=self.night_start.value(),
             night_break_end_hour=self.night_end.value(),
             headless=self.headless.isChecked(),
+            persist_session=self.persist_session.isChecked(),
             browser_binary=self.browser_binary.text().strip(),
             chromedriver_path=self.chromedriver_path.text().strip(),
             rotate_user_agent=self.rotate_user_agent.isChecked(),
@@ -456,6 +473,33 @@ class SettingsTab(QWidget):
         return True
 
     # -- actions --------------------------------------------------------
+    def _forget_session(self) -> None:
+        settings = self.collect()
+        if not checker.has_saved_session(settings):
+            QMessageBox.information(
+                self,
+                "Saved session",
+                f"No saved session for @{settings.instagram_username or '(no account)'}.",
+            )
+            return
+
+        confirm = QMessageBox.question(
+            self,
+            "Forget saved session",
+            f"Delete the stored login for @{settings.instagram_username}?\n\n"
+            "The next run will sign in again from scratch.",
+            QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
+        )
+        if confirm != QMessageBox.StandardButton.Yes:
+            return
+
+        if checker.forget_session(settings):
+            QMessageBox.information(self, "Saved session", "Session forgotten.")
+        else:
+            QMessageBox.warning(
+                self, "Saved session", "Could not remove the saved session."
+            )
+
     def _send_test(self) -> None:
         settings = self.collect()
         token = (

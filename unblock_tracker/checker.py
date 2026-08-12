@@ -9,6 +9,7 @@ credentials but only sees what a logged-out visitor sees.
 from __future__ import annotations
 
 import hashlib
+import shutil
 import random
 import time
 from collections.abc import Callable
@@ -84,6 +85,7 @@ class BrowserChecker:
         self.password = password
         self.log = log or (lambda _msg: None)
         self.driver: webdriver.Chrome | None = None
+        self.reused_session = False
         self.pool = (
             ProxyPool(settings.proxy_source_url, self.log)
             if settings.use_proxy
@@ -103,6 +105,12 @@ class BrowserChecker:
             options.add_argument(f"user-agent={random.choice(self.settings.user_agents)}")
         if proxy:
             options.add_argument(f"--proxy-server={proxy}")
+        if self.settings.persist_session:
+            # A dedicated profile directory, never the user's real Chrome one:
+            # Chrome refuses to start against a profile another instance holds.
+            session = self.settings.session_dir
+            session.mkdir(parents=True, exist_ok=True)
+            options.add_argument(f"--user-data-dir={session}")
         return options
 
     def _new_driver(self, proxy: str | None) -> webdriver.Chrome:
@@ -133,9 +141,19 @@ class BrowserChecker:
                 raise LoginFailed(f"Could not start the browser: {last_error}") from exc
 
             try:
+                # A saved session is the whole point: signing in again on every
+                # start (and on every mid-run browser restart) is what gets an
+                # account challenged.
+                if self.settings.persist_session and self._is_logged_in():
+                    self.log("Reused the saved session — no sign-in needed.")
+                    self.reused_session = True
+                    return
+
                 self._login()
                 if not self.settings.verify_login or self._is_logged_in():
-                    self.log("Logged in.")
+                    self.log("Signed in." + (" Session saved for next time."
+                                             if self.settings.persist_session else ""))
+                    self.reused_session = False
                     return
                 last_error = "Instagram did not accept the session."
                 self.log(f"Login attempt {attempt}/{attempts} failed.")
@@ -278,6 +296,25 @@ class AnonymousChecker:
 
     def screenshot(self, path: Path) -> bool:
         return False
+
+
+def has_saved_session(settings: config.Settings) -> bool:
+    """True when a browser profile exists for this account."""
+    session = settings.session_dir
+    return session.is_dir() and any(session.iterdir())
+
+
+def forget_session(settings: config.Settings) -> bool:
+    """Delete the saved session so the next run signs in fresh.
+
+    The escape hatch for a session Instagram has invalidated: without it a bad
+    cookie jar would keep failing with no way out from the UI.
+    """
+    session = settings.session_dir
+    if not session.is_dir():
+        return False
+    shutil.rmtree(session, ignore_errors=True)
+    return not session.exists()
 
 
 def build(settings: config.Settings, password: str, log: Callable[[str], None]):

@@ -116,6 +116,7 @@ avatar, which is enough to spot a profile reappearing.
 | Settings | `config.json` here | `~/Library/Application Support/Unblock Tracker/config.json` |
 | Run output | `runs/` here | `…/Unblock Tracker/runs/` |
 | Secrets | macOS Keychain | macOS Keychain |
+| Saved login session | `~/Library/Application Support/Unblock Tracker/sessions/` | same |
 
 A bundle must never write inside itself — that breaks the code signature, and
 every reinstall would wipe your settings — which is why the frozen build
@@ -135,7 +136,7 @@ uv pip install -r requirements-dev.txt
 .venv/bin/python -m pytest
 ```
 
-80 tests, about two seconds. Nothing in the suite touches the network, a
+109 tests, about two seconds. Nothing in the suite touches the network, a
 browser, Instagram, or your real Keychain.
 
 - **`tests/fakes.py`** replaces `checker.build` and `notifiers.build`, the only
@@ -183,6 +184,7 @@ build_app.sh             PyInstaller build; --install copies to /Applications
 config.example.json      committed template; every identity field blank
 tests/                   pytest suite; fakes.py stubs the browser and notifiers
 docs/GUIDE.md            the user guide, shown by the Help button
+ROADMAP.md               open work and the reasoning behind it
 assets/
   make_icon.py           regenerates icon.icns (run manually; icon.iconset
                          is an intermediate and is git-ignored)

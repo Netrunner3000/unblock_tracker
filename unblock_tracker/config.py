@@ -34,6 +34,12 @@ def _data_root() -> Path:
 DATA_ROOT = _data_root()
 CONFIG_PATH = DATA_ROOT / "config.json"
 
+# Saved browser sessions hold Instagram's login cookies — auth material, near
+# enough to a password. They deliberately do NOT live under DATA_ROOT: from
+# source that is the project folder, which is git-tracked and rsynced to Google
+# Drive. Application Support is neither.
+SESSION_ROOT = Path.home() / "Library" / "Application Support" / APP_NAME / "sessions"
+
 CHECK_MODE_LOGIN = "login"
 CHECK_MODE_ANONYMOUS = "anonymous"
 
@@ -86,6 +92,10 @@ class Settings:
     restart_after_checks: int = 100  # 0 = never restart mid-run
     verify_login: bool = True
     login_attempts: int = 3
+    # Reuse Instagram's login cookies between runs instead of signing in again
+    # each time. Repeated scripted logins are the likeliest thing to get an
+    # account challenged, and a browser restart mid-run used to mean a fresh one.
+    persist_session: bool = True
 
     # --- Proxies ---
     use_proxy: bool = False
@@ -115,6 +125,24 @@ class Settings:
     @property
     def screenshot_dir(self) -> Path:
         return self.resolved_data_dir() / "screenshots"
+
+    @property
+    def session_dir(self) -> Path:
+        """Chrome profile holding this account's login cookies.
+
+        Keyed by account so two accounts never share a session, and sanitised
+        because the handle becomes a directory name.
+        """
+        account = "".join(
+            c if c.isalnum() or c in "-_." else "_"
+            for c in (self.instagram_username or "default")
+        )
+        # Dots survive sanitising, so "." and ".." would still traverse — and
+        # forget_session() rmtree's this path. Anything without a real character
+        # in it falls back to a fixed name.
+        if not account.strip("."):
+            account = "default"
+        return SESSION_ROOT / account
 
     # ------------------------------------------------------------------
     # Validation

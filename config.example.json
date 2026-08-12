@@ -24,6 +24,7 @@
   "restart_after_checks": 100,
   "verify_login": true,
   "login_attempts": 3,
+  "persist_session": true,
   "use_proxy": false,
   "proxy_source_url": "https://api.proxyscrape.com/v2/?request=getproxies&protocol=http&timeout=3000&country=all",
   "save_screenshots": true,
