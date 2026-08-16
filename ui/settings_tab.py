@@ -6,6 +6,9 @@ the monitor refuses to start until they are filled in.
 
 from __future__ import annotations
 
+from collections.abc import Callable
+from pathlib import Path
+
 from PySide6.QtCore import Qt, Signal
 from PySide6.QtWidgets import (
     QCheckBox,
@@ -81,17 +84,41 @@ def _row(*widgets, stretch_last: bool = False) -> QWidget:
     return container
 
 
-def _browse_row(edit: QLineEdit, caption: str, directory: bool = False) -> QWidget:
-    """A line edit plus a Browse… button."""
+def _existing_dir(raw: str, fallback: Path) -> str:
+    """Resolve a field's value to a directory the file dialog can actually open.
+
+    A relative value like "runs" means nothing to QFileDialog, which then opens
+    the filesystem root. Walk up to the nearest directory that exists.
+    """
+    path = Path(raw).expanduser() if raw.strip() else fallback
+    if not path.is_absolute():
+        path = fallback
+    while not path.exists() and path != path.parent:
+        path = path.parent
+    return str(path)
+
+
+def _browse_row(
+    edit: QLineEdit,
+    caption: str,
+    directory: bool = False,
+    start: Callable[[], Path] | None = None,
+) -> QWidget:
+    """A line edit plus a Browse… button.
+
+    `start` supplies the folder to open when the field is blank or relative.
+    """
     edit.setMinimumWidth(FIELD_MIN)
     button = QPushButton("Browse…")
     button.setFixedWidth(96)
 
     def pick() -> None:
+        fallback = start() if start else Path.home()
+        opening = _existing_dir(edit.text(), fallback)
         if directory:
-            chosen = QFileDialog.getExistingDirectory(edit, caption, edit.text())
+            chosen = QFileDialog.getExistingDirectory(edit, caption, opening)
         else:
-            chosen, _ = QFileDialog.getOpenFileName(edit, caption, edit.text())
+            chosen, _ = QFileDialog.getOpenFileName(edit, caption, opening)
         if chosen:
             edit.setText(chosen)
 
@@ -313,11 +340,19 @@ class SettingsTab(QWidget):
         form.addRow(theme.label("Restart browser after"), _row(self.restart_after))
         form.addRow(
             theme.label("Browser binary"),
-            _browse_row(self.browser_binary, "Select a browser binary"),
+            _browse_row(
+                self.browser_binary,
+                "Select a browser binary",
+                start=lambda: Path("/Applications"),
+            ),
         )
         form.addRow(
             theme.label("chromedriver"),
-            _browse_row(self.chromedriver_path, "Select chromedriver"),
+            _browse_row(
+                self.chromedriver_path,
+                "Select chromedriver",
+                start=lambda: Path("/opt/homebrew/bin"),
+            ),
         )
         layout.addLayout(form)
 
@@ -342,6 +377,15 @@ class SettingsTab(QWidget):
         form.addRow(theme.label(""), self.use_proxy)
         form.addRow(theme.label("Proxy list URL"), self.proxy_source)
         layout.addLayout(form)
+
+        self.proxy_hint = theme.hint(
+            "Makes requests arrive from another IP, which avoids per-IP rate limits. "
+            "In logged-in mode this usually backfires: Instagram treats sign-ins from "
+            "unfamiliar rotating addresses as a far stronger signal than request rate, "
+            "so you invite a challenge. It fits anonymous mode, where there is no "
+            "session to make suspicious. See the guide for the full picture."
+        )
+        layout.addWidget(self.proxy_hint)
         return frame
 
     def _output_card(self) -> QWidget:
@@ -352,12 +396,30 @@ class SettingsTab(QWidget):
         form.addRow(theme.label(""), self.save_screenshots)
         form.addRow(
             theme.label("Run data folder"),
-            _browse_row(self.data_dir, "Select a folder for logs and screenshots", True),
+            _browse_row(
+                self.data_dir,
+                "Select a folder for logs and screenshots",
+                directory=True,
+                start=self._current_data_dir,
+            ),
         )
         layout.addLayout(form)
         return frame
 
     # -- state sync -----------------------------------------------------
+    def _current_data_dir(self) -> Path:
+        """Where Browse… should open for the run folder.
+
+        Created if absent, so the dialog lands inside it rather than on its
+        parent the first time it is used.
+        """
+        target = self.collect().resolved_data_dir()
+        try:
+            target.mkdir(parents=True, exist_ok=True)
+        except OSError:
+            return config.DATA_ROOT
+        return target
+
     def _sync_mode(self) -> None:
         login_mode = self.check_mode.currentData() == config.CHECK_MODE_LOGIN
         self.instagram_username.setEnabled(login_mode)

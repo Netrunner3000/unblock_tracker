@@ -162,8 +162,54 @@ Most people never need these.
   fetched automatically. Set them only to pin a specific browser (Brave, for
   instance) or a specific driver version.
 
-**Proxies** — routes the browser through a proxy fetched from a public list.
-Public proxies are slow and unreliable; expect failed checks. Off by default.
+**Proxies** — routes the browser through someone else's IP address instead of
+your own. Off by default, and see [When proxies help](#when-proxies-help)
+before turning it on: for logged-in mode they usually make things *worse*.
+
+---
+
+## When proxies help
+
+A proxy makes your requests arrive from a different IP address. Instagram sees
+that address, not yours.
+
+**The problem a proxy solves.** Instagram counts requests per IP. Check a
+profile every 10–20 seconds for hours from one home connection and that address
+accumulates a pattern no person produces. The usual result is not a ban but
+*rate limiting*: pages start coming back thin or empty. That is worse than it
+sounds here, because a throttled page can look exactly like a blocked one — the
+app would report "Blocked or unavailable" when nothing about the profile
+changed. Spreading requests across addresses keeps any single one below the
+threshold.
+
+**Why it usually backfires in logged-in mode.** Instagram does not just count
+requests, it scores *where a session logs in from*. A stable home IP is the
+least suspicious thing about your account. Signing in from a rotating set of
+unfamiliar addresses — often datacentre ranges in other countries, which are
+flagged far harder than residential ones — is a much stronger fraud signal than
+the request rate you were trying to hide. You would be trading a small problem
+for a bigger one, and the likely outcome is a verification challenge that stops
+the monitor entirely.
+
+There is also a plain security cost. Traffic to Instagram is encrypted, so an
+operator cannot read your password, but they do see which sites you connect to,
+and can drop, delay or interfere with connections. A free proxy list is run by
+people you know nothing about, and you would be pointing an authenticated
+session through it.
+
+**So when is it worth it?**
+
+| | Verdict |
+|---|---|
+| Logged-in mode, free public list | No. Slow, mostly dead, and rotating login IPs invites a challenge. |
+| Logged-in mode, one stable paid residential proxy | Only if your home IP is already rate-limited. Pick one address and keep it — rotation is the harmful part. |
+| Anonymous mode | This is the case it fits. No login means no session to make suspicious, so you are only working around per-IP rate limits. |
+| Hiding from the person you are watching | Pointless. They never see your requests; only Instagram does. |
+
+The built-in source is a free public list, which is the weakest option of all —
+most entries are dead, and the survivors are slow enough to cause failed checks
+on their own. Treat the feature as a way to plug in a proxy you already trust,
+not a reason to go find one.
 
 ---
 

@@ -4,6 +4,8 @@ from __future__ import annotations
 
 import pytest
 
+from pathlib import Path
+
 from unblock_tracker import config, secrets
 
 pytestmark = pytest.mark.usefixtures("qapp")
@@ -246,3 +248,45 @@ def test_no_placeholder_is_clipped_at_any_window_width(qapp, config_path, width)
             clipped.append(f"{text!r} needs {needed}px but has {usable}px")
 
     assert not clipped, "placeholder text would be elided: " + "; ".join(clipped)
+
+
+# ----------------------------------------------------------------------
+# Browse… starting folder
+# ----------------------------------------------------------------------
+def test_relative_paths_do_not_send_the_dialog_to_the_filesystem_root(tmp_path):
+    """Regression: "runs" is meaningless to QFileDialog, which then opened /."""
+    from ui.settings_tab import _existing_dir
+
+    assert _existing_dir("runs", tmp_path) == str(tmp_path)
+    assert _existing_dir("", tmp_path) == str(tmp_path)
+    assert _existing_dir("   ", tmp_path) == str(tmp_path)
+
+
+def test_absolute_paths_are_honoured(tmp_path):
+    from ui.settings_tab import _existing_dir
+
+    assert _existing_dir(str(tmp_path), Path("/nowhere")) == str(tmp_path)
+
+
+def test_a_missing_absolute_path_walks_up_to_something_real(tmp_path):
+    from ui.settings_tab import _existing_dir
+
+    deep = tmp_path / "not" / "created" / "yet"
+    assert _existing_dir(str(deep), tmp_path) == str(tmp_path)
+
+
+def test_browse_opens_the_configured_run_folder(tab, tmp_path):
+    """The reported bug: Browse… landed on Macintosh HD instead of runs/."""
+    tab.data_dir.setText(str(tmp_path / "custom-runs"))
+    opened = tab._current_data_dir()
+
+    assert opened == tmp_path / "custom-runs"
+    assert opened.exists(), "the folder should be created so the dialog opens inside it"
+
+
+def test_browse_falls_back_to_the_resolved_default_when_relative(tab):
+    tab.data_dir.setText("runs")
+    opened = tab._current_data_dir()
+
+    assert opened.is_absolute()
+    assert opened == config.Settings(data_dir="runs").resolved_data_dir()
