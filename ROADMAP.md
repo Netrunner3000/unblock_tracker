@@ -15,9 +15,24 @@ future-you doesn't have to re-derive it.
   biggest detection risk in the design. Toggle plus a *Forget saved session*
   button in Settings.
 
+- [x] **Track more than reachability** — counts, follower membership and
+  relationship flags, all as diffs between persisted snapshots
+  (`signals.py`). Markup knowledge is isolated in pure parsers
+  (`parsing.py`) so the fragile half is fixture-testable.
+- [x] **Watch several profiles in one run** — `Settings.watchlist`; the engine
+  cycles targets and keeps per-target history. `stop_on_unblock` applies only
+  to a lone target, since stopping would abandon the others.
+
 ---
 
 ## Next
+
+### 0. Validate the new scrapers against real pages
+`parse_counts` and `parse_handles` are pinned by fixtures I wrote, not by real
+Instagram output. The meta-description path is the most likely to hold; the
+follower-dialog scroller (`BrowserChecker._scroll_dialog`) is the least. Save
+real pages as fixtures the first time you run this for real, and treat the
+current selectors as a starting point.
 
 ### 1. Test `checker.py` against saved HTML fixtures
 The "is this profile blocked?" parsing is the most fragile code in the project

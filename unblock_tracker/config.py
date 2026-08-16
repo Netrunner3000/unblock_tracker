@@ -67,6 +67,9 @@ class Settings:
     # --- Identity: no defaults, ever. The user types these in. ---
     instagram_username: str = ""
     target_profile: str = ""
+    # Extra handles to watch alongside target_profile. Empty is the common
+    # case; the app stays a single-target tool unless you ask otherwise.
+    watchlist: list[str] = field(default_factory=list)
     telegram_chat_id: str = ""
 
     # --- What kind of check to run ---
@@ -104,6 +107,18 @@ class Settings:
     # --- Output ---
     save_screenshots: bool = True
     data_dir: str = "runs"
+
+    # ------------------------------------------------------------------
+    # Targets
+    # ------------------------------------------------------------------
+    def targets(self) -> list[str]:
+        """Every handle this run should check, in order, without duplicates."""
+        ordered: dict[str, None] = {}
+        for handle in [self.target_profile, *self.watchlist]:
+            cleaned = handle.strip().lstrip("@")
+            if cleaned:
+                ordered.setdefault(cleaned, None)
+        return list(ordered)
 
     # ------------------------------------------------------------------
     # Derived paths

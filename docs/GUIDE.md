@@ -31,6 +31,10 @@ Open the **Settings** tab. Work down the cards.
 **Profile to watch**
 
 - **Target profile** — the handle you want to monitor, without the `@`.
+- **Also watch** — optional. One extra handle per line to watch alongside the
+  main one. Each cycle checks every handle in turn, so more profiles means a
+  longer cycle. With more than one, a run keeps going past the first profile
+  that becomes visible instead of stopping.
 
 **Notifications** — optional, but the main reason to run this unattended. Pick
 a channel under **Send alerts via**:
@@ -88,17 +92,49 @@ check establishes a baseline and records nothing.
 
 ---
 
+## What else gets tracked
+
+Beyond "can I see this profile", each check reads whatever else the page
+happens to expose and tells you when it moves:
+
+| Signal | What a change means |
+|---|---|
+| **followers / following / posts** | The count went up or down. Post counts falling means something was deleted or archived. |
+| **who follows** | Named arrivals and departures, when the follower list can be read. |
+| **private** | The account switched between public and private. |
+| **verified** | A badge appeared or disappeared. |
+| **restricted** | You appear to have been restricted, or un-restricted. |
+| **close friends** | A story you can see was, or stopped being, a Close Friends story. |
+
+Two rules keep this honest:
+
+- **The first reading is a baseline, never an alert.** Nothing is reported
+  until there is something to compare against.
+- **A signal that could not be read is silence, not zero.** If a check fails to
+  find the follower count, the app says nothing rather than announcing that
+  everyone unfollowed you — and the previous value is kept.
+
+Deleted posts are recorded as *that a post went away* (the count dropped), with
+a timestamp. The app does not keep a copy of removed content.
+
+Which signals are available depends on the mode and the account: a public
+profile in anonymous mode exposes counts, while follower lists and relationship
+flags need a logged-in session and an account whose lists you can open.
+
 ## 3. Read the history
 
 The **Events** tab lists every recorded change, newest first, with the
 screenshot taken at that moment. Select a row to see it. The dot in the
-**Shot** column means a screenshot exists.
+**Shot** column means a screenshot exists, and the **Target** column says which
+handle the row is about — useful once you are watching more than one.
 
 **Open run folder** reveals the raw files:
 
 - `events.csv` — the same table, for a spreadsheet
 - `monitor.log` — the full activity log, including checks that changed nothing
 - `screenshots/` — one image per recorded change
+- `snapshots.json` — the last reading per handle, so counts and follower lists
+  can be compared across restarts
 
 ---
 

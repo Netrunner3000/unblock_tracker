@@ -290,3 +290,26 @@ def test_browse_falls_back_to_the_resolved_default_when_relative(tab):
 
     assert opened.is_absolute()
     assert opened == config.Settings(data_dir="runs").resolved_data_dir()
+
+
+# ----------------------------------------------------------------------
+# Watchlist
+# ----------------------------------------------------------------------
+def test_watchlist_round_trips_through_the_form(tab, config_path):
+    tab.target_profile.setText("alpha")
+    tab.watchlist.setPlainText("@beta\ngamma\n\n  @delta  \n")
+    tab.save()
+
+    reloaded = config.load(config_path)
+    assert reloaded.watchlist == ["beta", "gamma", "delta"]
+    assert reloaded.targets() == ["alpha", "beta", "gamma", "delta"]
+
+
+def test_an_empty_watchlist_leaves_a_single_target(tab):
+    tab.target_profile.setText("alpha")
+    assert tab.collect().targets() == ["alpha"]
+
+
+def test_loading_repopulates_the_watchlist(tab):
+    tab.load(config.Settings(target_profile="alpha", watchlist=["beta", "gamma"]))
+    assert tab.watchlist.toPlainText().splitlines() == ["beta", "gamma"]

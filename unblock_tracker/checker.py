@@ -25,8 +25,9 @@ from selenium.webdriver.chrome.service import Service
 from selenium.webdriver.common.by import By
 from selenium.webdriver.common.keys import Keys
 
-from . import config
+from . import config, parsing
 from .proxies import ProxyPool
+from .signals import Snapshot
 
 # --- Statuses -----------------------------------------------------------
 UNKNOWN = "unknown"
@@ -64,10 +65,35 @@ class CheckResult:
     status: str
     detail: str = ""
     fingerprint: str = ""  # avatar hash, anonymous mode only
+    # Everything measurable the check happened to see. Empty is normal and
+    # means "not observed" — never "zero". See signals.diff.
+    snapshot: Snapshot | None = None
 
 
 class LoginFailed(RuntimeError):
     pass
+
+
+def snapshot_from_page(html: str) -> Snapshot:
+    """Everything measurable on a profile page.
+
+    Only keys that were actually found are included. A signal that could not
+    be read is left out rather than defaulted, because `signals.diff` treats a
+    missing key as silence and a present one as fact — defaulting to zero
+    would announce that someone lost all their followers.
+    """
+    snapshot = Snapshot(counts=parsing.parse_counts(html))
+
+    for name, value in (
+        ("private", parsing.parse_is_private(html)),
+        ("verified", parsing.parse_is_verified(html)),
+        ("restricted", parsing.parse_restricted(html)),
+        ("close_friends", parsing.parse_close_friends(html)),
+    ):
+        if value is not None:
+            snapshot.flags[name] = value
+
+    return snapshot
 
 
 class BrowserChecker:
@@ -199,11 +225,12 @@ class BrowserChecker:
             self.driver = None
 
     # -- the check itself ------------------------------------------------
-    def check(self) -> CheckResult:
+    def check(self, target: str = "") -> CheckResult:
         if self.driver is None:
             return CheckResult(ERROR, "Browser is not running.")
 
-        self.driver.get(f"https://www.instagram.com/{self.settings.target_profile}/")
+        target = target or self.settings.target_profile
+        self.driver.get(f"https://www.instagram.com/{target}/")
         time.sleep(5)
         page = self.driver.page_source
 
@@ -212,7 +239,11 @@ class BrowserChecker:
 
         try:
             self.driver.find_element(By.XPATH, "//h2[text()='This Account is Private']")
-            return CheckResult(VISIBLE_PRIVATE, "Profile resolves as a private account.")
+            return CheckResult(
+                VISIBLE_PRIVATE,
+                "Profile resolves as a private account.",
+                snapshot=snapshot_from_page(page),
+            )
         except NoSuchElementException:
             pass
 
@@ -222,7 +253,11 @@ class BrowserChecker:
         except NoSuchElementException:
             pass
 
-        return CheckResult(VISIBLE_PUBLIC, "Profile page rendered normally.")
+        return CheckResult(
+            VISIBLE_PUBLIC,
+            "Profile page rendered normally.",
+            snapshot=snapshot_from_page(page),
+        )
 
     def screenshot(self, path: Path) -> bool:
         if self.driver is None:
@@ -232,6 +267,66 @@ class BrowserChecker:
             return bool(self.driver.save_screenshot(str(path)))
         except WebDriverException:
             return False
+
+    # -- follower / following lists --------------------------------------
+    def collect_handles(self, account: str, which: str) -> list[str] | None:
+        """Scrape one of the follower/following dialogs.
+
+        `which` is "followers" or "following". Returns None when the list
+        could not be read at all — the caller must not treat that as an empty
+        list, or every follower would look like they left.
+
+        Only usable on an account whose lists you can open, which in practice
+        means your own or a public one.
+        """
+        if self.driver is None:
+            return None
+
+        try:
+            self.driver.get(f"https://www.instagram.com/{account}/{which}/")
+            time.sleep(4)
+            handles = self._scroll_dialog()
+        except WebDriverException as exc:
+            self.log(f"Could not read {which} for @{account}: {exc}")
+            return None
+
+        if not handles:
+            # Genuinely-zero and could-not-read are indistinguishable from
+            # here, so report the safe one.
+            self.log(f"No {which} rows found for @{account} — treating as unread.")
+            return None
+        return handles
+
+    def _scroll_dialog(self, max_scrolls: int = 60) -> list[str]:
+        """Scroll the follower dialog until it stops producing new handles."""
+        assert self.driver is not None
+        seen: dict[str, None] = {}
+        stable = 0
+
+        for _ in range(max_scrolls):
+            for handle in parsing.parse_handles(self.driver.page_source):
+                seen.setdefault(handle, None)
+
+            before = len(seen)
+            try:
+                self.driver.execute_script(
+                    "const d=document.querySelector('div[role=dialog]');"
+                    "if(d){const s=d.querySelector('div[style*=overflow]')||d;"
+                    "s.scrollTop=s.scrollHeight;}"
+                    "window.scrollTo(0, document.body.scrollHeight);"
+                )
+            except WebDriverException:
+                break
+            time.sleep(1.5)
+
+            for handle in parsing.parse_handles(self.driver.page_source):
+                seen.setdefault(handle, None)
+
+            stable = stable + 1 if len(seen) == before else 0
+            if stable >= 3:  # three quiet rounds means the list has ended
+                break
+
+        return list(seen)
 
 
 class AnonymousChecker:
@@ -264,8 +359,9 @@ class AnonymousChecker:
     def stop(self) -> None:
         self.session.close()
 
-    def check(self) -> CheckResult:
-        url = f"https://www.instagram.com/{self.settings.target_profile}/"
+    def check(self, target: str = "") -> CheckResult:
+        target = target or self.settings.target_profile
+        url = f"https://www.instagram.com/{target}/"
         try:
             response = self.session.get(url, timeout=15)
         except requests.RequestException as exc:
@@ -285,6 +381,7 @@ class AnonymousChecker:
             VISIBLE_PUBLIC,
             "Public page exposes profile metadata.",
             fingerprint=self._hash_image(og_image["content"]),
+            snapshot=snapshot_from_page(response.text),
         )
 
     def _hash_image(self, image_url: str) -> str:

@@ -18,6 +18,7 @@ from PySide6.QtWidgets import (
     QLabel,
     QLineEdit,
     QMessageBox,
+    QPlainTextEdit,
     QPushButton,
     QScrollArea,
     QSpinBox,
@@ -222,7 +223,19 @@ class SettingsTab(QWidget):
         self.target_profile.setPlaceholderText("handle without the @")
         self.target_profile.setMinimumWidth(FIELD_MIN)
         form.addRow(theme.label("Target profile"), self.target_profile)
+
+        self.watchlist = QPlainTextEdit()
+        self.watchlist.setPlaceholderText("optional — one extra handle per line")
+        self.watchlist.setFixedHeight(80)
+        form.addRow(theme.label("Also watch"), self.watchlist)
         layout.addLayout(form)
+
+        self.watchlist_hint = theme.hint(
+            "Each cycle checks every handle in turn, so more profiles means a longer "
+            "cycle. With more than one, a run keeps going past the first profile that "
+            "becomes visible rather than stopping."
+        )
+        layout.addWidget(self.watchlist_hint)
         return frame
 
     def _notify_card(self) -> QWidget:
@@ -444,6 +457,7 @@ class SettingsTab(QWidget):
         self.instagram_password.setText(secrets.get(secrets.INSTAGRAM_PASSWORD, account))
 
         self.target_profile.setText(settings.target_profile)
+        self.watchlist.setPlainText("\n".join(settings.watchlist))
 
         self.notifier.setCurrentIndex(max(0, self.notifier.findData(settings.notifier)))
         self.telegram_token.setText(secrets.get(secrets.TELEGRAM_BOT_TOKEN, account))
@@ -483,6 +497,11 @@ class SettingsTab(QWidget):
         return config.Settings(
             instagram_username=self.instagram_username.text().strip().lstrip("@"),
             target_profile=self.target_profile.text().strip().lstrip("@"),
+            watchlist=[
+                line.strip().lstrip("@")
+                for line in self.watchlist.toPlainText().splitlines()
+                if line.strip()
+            ],
             telegram_chat_id=self.telegram_chat_id.text().strip(),
             check_mode=self.check_mode.currentData(),
             notifier=self.notifier.currentData(),

@@ -37,7 +37,7 @@ class FakeProbe:
     def stop(self) -> None:
         self.stops += 1
 
-    def check(self) -> checker.CheckResult:
+    def check(self, target: str = "") -> checker.CheckResult:
         if self.script:
             return self.script.pop(0)
         if self.engine_box:

@@ -1,6 +1,7 @@
 {
   "instagram_username": "",
   "target_profile": "",
+  "watchlist": [],
   "telegram_chat_id": "",
   "check_mode": "login",
   "notifier": "none",

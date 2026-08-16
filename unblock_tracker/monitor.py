@@ -14,27 +14,37 @@ from dataclasses import dataclass
 from datetime import datetime
 from pathlib import Path
 
-from . import checker, config, notifiers
+from . import checker, config, notifiers, signals
 
 
 @dataclass
 class Event:
-    """A status change worth recording."""
+    """Something worth recording: a visibility change, or a tracked signal."""
 
     timestamp: datetime
     status: str
     detail: str
     screenshot: str = ""
+    kind: str = "visibility"  # "visibility" | "count" | "flag" | "members"
+    signal: str = ""  # which signal, for non-visibility events
+    target: str = ""  # which handle this is about
 
     @property
     def stamp(self) -> str:
         return self.timestamp.strftime("%Y-%m-%d %H:%M:%S")
 
+    @property
+    def label(self) -> str:
+        """What to show in the Status column."""
+        if self.kind == "visibility":
+            return checker.label(self.status)
+        return signals.label(self.signal) if self.signal else self.kind
+
 
 class EventStore:
     """Appends events to a CSV and a plain-text log inside the run directory."""
 
-    HEADER = ["Timestamp", "Status", "Detail", "Screenshot"]
+    HEADER = ["Timestamp", "Target", "Status", "Detail", "Screenshot"]
 
     def __init__(self, settings: config.Settings):
         self.csv_path = settings.csv_path
@@ -48,7 +58,7 @@ class EventStore:
             if new_file:
                 writer.writerow(self.HEADER)
             writer.writerow(
-                [event.stamp, checker.label(event.status), event.detail, event.screenshot]
+                [event.stamp, event.target, event.label, event.detail, event.screenshot]
             )
 
     def append_log(self, line: str) -> None:
@@ -80,6 +90,9 @@ class MonitorEngine:
         self.on_event = on_event or (lambda _event: None)
 
         self.store = EventStore(settings)
+        self.snapshots = signals.SnapshotStore(
+            settings.resolved_data_dir() / "snapshots.json"
+        )
         self._stop = threading.Event()
 
     # ------------------------------------------------------------------
@@ -116,7 +129,18 @@ class MonitorEngine:
         probe = checker.build(settings, self.password, self.log)
         notifier = notifiers.build(settings)
 
-        self.log(f"Monitoring @{settings.target_profile} — {notifier.describe()}.")
+        targets = settings.targets() or [settings.target_profile]
+        watching = ", ".join(f"@{t}" for t in targets)
+        self.log(f"Monitoring {watching} — {notifier.describe()}.")
+
+        # Stopping the whole run because one of several accounts became visible
+        # would abandon the others, so the setting only applies to a lone target.
+        stop_on_unblock = settings.stop_on_unblock and len(targets) == 1
+        if settings.stop_on_unblock and not stop_on_unblock:
+            self.log(
+                "Watching several profiles, so the run continues past the first "
+                "one that becomes visible."
+            )
 
         try:
             probe.start()
@@ -130,8 +154,8 @@ class MonitorEngine:
             if settings.max_runtime_minutes
             else None
         )
-        last_status = checker.UNKNOWN
-        last_fingerprint = ""
+        last_status: dict[str, str] = dict.fromkeys(targets, checker.UNKNOWN)
+        last_fingerprint: dict[str, str] = {}
         checks = 0
         reason = "Stopped."
 
@@ -148,39 +172,52 @@ class MonitorEngine:
                             break
                     continue
 
-                try:
-                    result = probe.check()
-                except Exception as exc:  # noqa: BLE001 - browser errors are varied
-                    self.log(f"Check failed: {exc}. Restarting the browser…")
+                broke_out = False
+                for target in targets:
+                    if self.stopping:
+                        break
+
                     try:
-                        probe.restart()
-                    except checker.LoginFailed as restart_exc:
-                        reason = str(restart_exc)
-                        self.log(reason)
-                        break
-                    continue
-
-                checks += 1
-                self.on_status(result.status, result.detail)
-                self.log(f"{checker.label(result.status)} — {result.detail}")
-
-                if result.status != last_status and last_status != checker.UNKNOWN:
-                    self._record(probe, notifier, result, now, changed=True)
-                elif result.fingerprint and last_fingerprint and (
-                    result.fingerprint != last_fingerprint
-                ):
-                    self.log("Profile image changed.")
-                    self._record(probe, notifier, result, now, changed=False)
-
-                if checker.is_visible(result.status) and settings.stop_on_unblock:
-                    if last_status in (checker.BLOCKED, checker.UNKNOWN):
-                        reason = f"@{settings.target_profile} is visible — stopping."
-                        self.log(reason)
+                        result = probe.check(target)
+                    except Exception as exc:  # noqa: BLE001 - browser errors vary
+                        self.log(f"Check failed for @{target}: {exc}. Restarting…")
+                        try:
+                            probe.restart()
+                        except checker.LoginFailed as restart_exc:
+                            reason = str(restart_exc)
+                            self.log(reason)
+                            broke_out = True
                         break
 
-                last_status = result.status
-                if result.fingerprint:
-                    last_fingerprint = result.fingerprint
+                    checks += 1
+                    prefix = f"@{target}: " if len(targets) > 1 else ""
+                    self.on_status(result.status, f"{prefix}{result.detail}")
+                    self.log(f"{prefix}{checker.label(result.status)} — {result.detail}")
+
+                    self._record_signals(notifier, result, now, target)
+
+                    previous = last_status.get(target, checker.UNKNOWN)
+                    if result.status != previous and previous != checker.UNKNOWN:
+                        self._record(probe, notifier, result, now, True, target)
+                    elif result.fingerprint and last_fingerprint.get(target) and (
+                        result.fingerprint != last_fingerprint[target]
+                    ):
+                        self.log(f"{prefix}Profile image changed.")
+                        self._record(probe, notifier, result, now, False, target)
+
+                    if checker.is_visible(result.status) and stop_on_unblock:
+                        if previous in (checker.BLOCKED, checker.UNKNOWN):
+                            reason = f"@{target} is visible — stopping."
+                            self.log(reason)
+                            broke_out = True
+                            break
+
+                    last_status[target] = result.status
+                    if result.fingerprint:
+                        last_fingerprint[target] = result.fingerprint
+
+                if broke_out:
+                    break
 
                 if deadline and datetime.now().timestamp() >= deadline:
                     reason = "Maximum run time reached."
@@ -209,6 +246,56 @@ class MonitorEngine:
         return reason
 
     # ------------------------------------------------------------------
+    def _record_signals(
+        self,
+        notifier: notifiers.Notifier,
+        result: checker.CheckResult,
+        now: datetime,
+        target: str = "",
+    ) -> None:
+        """Diff this check's measurements against the last, and record moves.
+
+        The saved snapshot is only replaced with what was actually observed
+        merged over what we knew, so a check that failed to read one signal
+        does not erase the previous value for it.
+        """
+        if result.snapshot is None or result.snapshot.is_empty():
+            return
+
+        target = target or self.settings.target_profile
+        previous = self.snapshots.load(target)
+        changes = signals.diff(previous, result.snapshot)
+
+        merged = signals.Snapshot(
+            counts={**(previous.counts if previous else {}), **result.snapshot.counts},
+            flags={**(previous.flags if previous else {}), **result.snapshot.flags},
+            members={
+                **(previous.members if previous else {}),
+                **result.snapshot.members,
+            },
+            taken_at=now.isoformat(timespec="seconds"),
+        )
+        self.snapshots.save(target, merged)
+
+        for change in changes:
+            self.log(str(change))
+            event = Event(
+                timestamp=now,
+                status=checker.UNKNOWN,
+                detail=change.detail,
+                kind=change.kind,
+                signal=change.name,
+                target=target,
+            )
+            self.store.record(event)
+            self.on_event(event)
+
+            try:
+                notifier.send(f"@{target}: {change.detail}")
+            except Exception as exc:  # noqa: BLE001 - never let a notifier kill the run
+                self.log(f"Notification failed: {exc}")
+
+    # ------------------------------------------------------------------
     def _record(
         self,
         probe,
@@ -216,9 +303,11 @@ class MonitorEngine:
         result: checker.CheckResult,
         now: datetime,
         changed: bool,
+        target: str = "",
     ) -> None:
         """Persist an event, capture a screenshot, and notify."""
         settings = self.settings
+        target = target or settings.target_profile
         shot = ""
 
         if settings.save_screenshots and probe.supports_screenshots:
@@ -226,22 +315,22 @@ class MonitorEngine:
             if probe.screenshot(settings.screenshot_dir / filename):
                 shot = filename
 
-        event = Event(now, result.status, result.detail, shot)
+        event = Event(now, result.status, result.detail, shot, target=target)
         self.store.record(event)
         self.on_event(event)
 
         if changed and checker.is_visible(result.status):
             message = (
-                f"@{settings.target_profile} is visible again "
+                f"@{target} is visible again "
                 f"({checker.label(result.status)}) at {event.stamp}."
             )
         elif changed:
             message = (
-                f"@{settings.target_profile} changed to "
+                f"@{target} changed to "
                 f"{checker.label(result.status)} at {event.stamp}."
             )
         else:
-            message = f"@{settings.target_profile} changed its profile image at {event.stamp}."
+            message = f"@{target} changed its profile image at {event.stamp}."
 
         try:
             if shot:

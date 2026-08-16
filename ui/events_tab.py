@@ -25,9 +25,9 @@ from unblock_tracker.monitor import EventStore
 from . import theme
 from .monitor_tab import Placeholder
 
-COLUMNS = ("Timestamp", "Status", "Detail", "Screenshot")
-HEADINGS = ("When", "Status", "Detail", "Shot")
-SHOT_COLUMN = 3
+COLUMNS = ("Timestamp", "Target", "Status", "Detail", "Screenshot")
+HEADINGS = ("When", "Target", "Status", "Detail", "Shot")
+SHOT_COLUMN = 4
 
 
 class EventsTab(QWidget):
@@ -120,11 +120,11 @@ class EventsTab(QWidget):
 
         modes = QHeaderView.ResizeMode
         header = self.table.horizontalHeader()
-        header.setSectionResizeMode(0, modes.ResizeToContents)
-        header.setSectionResizeMode(1, modes.ResizeToContents)
-        header.setSectionResizeMode(2, modes.Stretch)
-        header.setSectionResizeMode(3, modes.Fixed)
-        self.table.setColumnWidth(3, 48)
+        for column in (0, 1, 2):
+            header.setSectionResizeMode(column, modes.ResizeToContents)
+        header.setSectionResizeMode(3, modes.Stretch)
+        header.setSectionResizeMode(SHOT_COLUMN, modes.Fixed)
+        self.table.setColumnWidth(SHOT_COLUMN, 48)
 
         self.summary.setText(
             f"{len(rows)} recorded event{'s' if len(rows) != 1 else ''}"

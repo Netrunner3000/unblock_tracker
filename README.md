@@ -10,6 +10,11 @@ It replaces the pile of near-identical monitor scripts this project used to be.
 Every variant's behaviour survives as a setting: logged-in or anonymous checks,
 user-agent rotation, proxy pooling, screenshots, CSV history, quiet hours.
 
+Beyond reachability it tracks whatever else a profile page exposes — follower,
+following and post counts, who follows, and relationship flags like private,
+restricted and close friends — and reports what moved. Several handles can be
+watched in one run.
+
 ## Nothing is hard-coded
 
 No account name, target handle, chat ID or token appears anywhere in this
@@ -92,8 +97,8 @@ on it.
 **Monitor** — Start/Stop, the current status, and a live activity log. Stop
 takes effect immediately, even in the middle of a wait.
 
-**Events** — every recorded status change with its screenshot. Replaces the old
-Flask dashboard.
+**Events** — every recorded change with its screenshot and the handle it
+concerns. Replaces the old Flask dashboard.
 
 ## Check modes
 
@@ -136,7 +141,7 @@ uv pip install -r requirements-dev.txt
 .venv/bin/python -m pytest
 ```
 
-109 tests, about two seconds. Nothing in the suite touches the network, a
+188 tests, about two seconds. Nothing in the suite touches the network, a
 browser, Instagram, or your real Keychain.
 
 - **`tests/fakes.py`** replaces `checker.build` and `notifiers.build`, the only
@@ -190,6 +195,8 @@ assets/
                          is an intermediate and is git-ignored)
 unblock_tracker/
   config.py              Settings dataclass, JSON load/save, validation
+  parsing.py             pure Instagram-markup parsers (fixture-tested)
+  signals.py             snapshots, diffing and their persistence
   secrets.py             Keychain wrapper
   checker.py             BrowserChecker (Selenium) and AnonymousChecker
   proxies.py             optional proxy pool
