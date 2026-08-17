@@ -141,7 +141,7 @@ uv pip install -r requirements-dev.txt
 .venv/bin/python -m pytest
 ```
 
-188 tests, about two seconds. Nothing in the suite touches the network, a
+209 tests, about two seconds. Nothing in the suite touches the network, a
 browser, Instagram, or your real Keychain.
 
 - **`tests/fakes.py`** replaces `checker.build` and `notifiers.build`, the only
@@ -196,6 +196,7 @@ assets/
 unblock_tracker/
   config.py              Settings dataclass, JSON load/save, validation
   parsing.py             pure Instagram-markup parsers (fixture-tested)
+  checker.py:classify    pure page verdict, separate from fetching
   signals.py             snapshots, diffing and their persistence
   secrets.py             Keychain wrapper
   checker.py             BrowserChecker (Selenium) and AnonymousChecker

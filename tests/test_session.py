@@ -147,6 +147,10 @@ class FakeDriver:
     def get(self, url):
         self.visited.append(url)
 
+    def execute_script(self, script, *args):
+        # The page-ready wait polls document.readyState.
+        return "complete"
+
     @property
     def page_source(self):
         return '<div aria-label="Home">' if self.logged_in else "<div>login</div>"

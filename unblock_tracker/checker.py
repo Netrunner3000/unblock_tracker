@@ -24,6 +24,8 @@ from selenium.webdriver.chrome.options import Options
 from selenium.webdriver.chrome.service import Service
 from selenium.webdriver.common.by import By
 from selenium.webdriver.common.keys import Keys
+from selenium.webdriver.support import expected_conditions as EC
+from selenium.webdriver.support.ui import WebDriverWait
 
 from . import config, parsing
 from .proxies import ProxyPool
@@ -72,6 +74,40 @@ class CheckResult:
 
 class LoginFailed(RuntimeError):
     pass
+
+
+def classify(html: str, status_code: int | None = None) -> CheckResult:
+    """Decide what a profile page says, from its markup alone.
+
+    Pure on purpose: fetching a page needs a real account, but interpreting one
+    does not, so this is the piece fixtures can pin down. Order matters —
+    "unavailable" and "not found" are checked before anything that would read
+    the page as a normal profile.
+    """
+    if status_code == 404:
+        return CheckResult(BLOCKED, "Instagram returned 404.")
+
+    if any(marker in html for marker in _BLOCKED_MARKERS):
+        return CheckResult(BLOCKED, "Profile page reports it is unavailable.")
+
+    if "Page Not Found" in html:
+        return CheckResult(BLOCKED, "Instagram returned Page Not Found.")
+
+    # Must come before the visible verdicts: a login page carries none of the
+    # markers above, so without this an expired session reads as "unblocked".
+    if parsing.looks_like_login_wall(html):
+        return CheckResult(ERROR, "Got the sign-in page — the session is not valid.")
+
+    snapshot = snapshot_from_page(html)
+
+    if parsing.parse_is_private(html) is True:
+        return CheckResult(
+            VISIBLE_PRIVATE, "Profile resolves as a private account.", snapshot=snapshot
+        )
+
+    return CheckResult(
+        VISIBLE_PUBLIC, "Profile page rendered normally.", snapshot=snapshot
+    )
 
 
 def snapshot_from_page(html: str) -> Snapshot:
@@ -150,6 +186,30 @@ class BrowserChecker:
         )
         return webdriver.Chrome(service=service, options=options)
 
+    # -- waiting ---------------------------------------------------------
+    def _await_page(self) -> None:
+        """Wait for the document to finish rendering.
+
+        Replaces a fixed sleep, which was simultaneously too short on a slow
+        connection and wasted time on a fast one. Timing out is not an error:
+        the page is classified from whatever did load.
+        """
+        try:
+            WebDriverWait(self.driver, self.settings.page_timeout_seconds).until(
+                lambda d: d.execute_script("return document.readyState") == "complete"
+            )
+        except WebDriverException:
+            return
+
+    def _await_element(self, by, value: str) -> bool:
+        try:
+            WebDriverWait(self.driver, self.settings.page_timeout_seconds).until(
+                EC.presence_of_element_located((by, value))
+            )
+            return True
+        except WebDriverException:
+            return False
+
     def start(self) -> None:
         attempts = max(1, self.settings.login_attempts)
         last_error = "unknown error"
@@ -195,19 +255,30 @@ class BrowserChecker:
     def _login(self) -> None:
         assert self.driver is not None
         self.driver.get("https://www.instagram.com/accounts/login/")
-        time.sleep(3)
+        if not self._await_element(By.NAME, "password"):
+            raise LoginFailed("The sign-in form never appeared.")
+
         self.driver.find_element(By.NAME, "username").send_keys(
             self.settings.instagram_username
         )
         password_field = self.driver.find_element(By.NAME, "password")
         password_field.send_keys(self.password)
         password_field.send_keys(Keys.RETURN)
-        time.sleep(5)
+
+        # Submitting navigates away; waiting for the form to go is a real
+        # signal that something happened, unlike a fixed pause.
+        try:
+            WebDriverWait(self.driver, self.settings.page_timeout_seconds).until(
+                EC.staleness_of(password_field)
+            )
+        except WebDriverException:
+            pass
+        self._await_page()
 
     def _is_logged_in(self) -> bool:
         assert self.driver is not None
         self.driver.get("https://www.instagram.com/")
-        time.sleep(3)
+        self._await_page()
         page = self.driver.page_source
         return 'aria-label="Home"' in page or "profile-tab" in page
 
@@ -231,33 +302,8 @@ class BrowserChecker:
 
         target = target or self.settings.target_profile
         self.driver.get(f"https://www.instagram.com/{target}/")
-        time.sleep(5)
-        page = self.driver.page_source
-
-        if any(marker in page for marker in _BLOCKED_MARKERS):
-            return CheckResult(BLOCKED, "Profile page reports it is unavailable.")
-
-        try:
-            self.driver.find_element(By.XPATH, "//h2[text()='This Account is Private']")
-            return CheckResult(
-                VISIBLE_PRIVATE,
-                "Profile resolves as a private account.",
-                snapshot=snapshot_from_page(page),
-            )
-        except NoSuchElementException:
-            pass
-
-        try:
-            self.driver.find_element(By.XPATH, "//h1[contains(text(), 'Page Not Found')]")
-            return CheckResult(BLOCKED, "Instagram returned Page Not Found.")
-        except NoSuchElementException:
-            pass
-
-        return CheckResult(
-            VISIBLE_PUBLIC,
-            "Profile page rendered normally.",
-            snapshot=snapshot_from_page(page),
-        )
+        self._await_page()
+        return classify(self.driver.page_source)
 
     def screenshot(self, path: Path) -> bool:
         if self.driver is None:
@@ -284,7 +330,7 @@ class BrowserChecker:
 
         try:
             self.driver.get(f"https://www.instagram.com/{account}/{which}/")
-            time.sleep(4)
+            self._await_element(By.CSS_SELECTOR, "div[role=dialog]")
             handles = self._scroll_dialog()
         except WebDriverException as exc:
             self.log(f"Could not read {which} for @{account}: {exc}")
@@ -367,22 +413,17 @@ class AnonymousChecker:
         except requests.RequestException as exc:
             return CheckResult(ERROR, str(exc))
 
-        if response.status_code == 404 or any(
-            marker in response.text for marker in _BLOCKED_MARKERS
-        ):
-            return CheckResult(BLOCKED, "Public page is unavailable.")
+        verdict = classify(response.text, response.status_code)
+        if not is_visible(verdict.status):
+            return verdict
 
         soup = BeautifulSoup(response.text, "html.parser")
         og_image = soup.find("meta", property="og:image")
         if not og_image or not og_image.get("content"):
             return CheckResult(BLOCKED, "No profile image in the page metadata.")
 
-        return CheckResult(
-            VISIBLE_PUBLIC,
-            "Public page exposes profile metadata.",
-            fingerprint=self._hash_image(og_image["content"]),
-            snapshot=snapshot_from_page(response.text),
-        )
+        verdict.fingerprint = self._hash_image(og_image["content"])
+        return verdict
 
     def _hash_image(self, image_url: str) -> str:
         try:

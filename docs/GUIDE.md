@@ -49,6 +49,12 @@ a channel under **Send alerts via**:
 - *Pushbullet* — needs an access token from
   [pushbullet.com/account](https://www.pushbullet.com/#settings/account).
 
+Under the channel are three toggles for which tracked signals are worth
+interrupting you for. Visibility changes always alert — that is the point of
+the app. Follower arrivals/departures and relationship changes are on by
+default; raw counts are off, because an active account moves them constantly
+and would bury the alerts that matter. Everything is recorded either way.
+
 Press **Send test notification** before relying on it. It tells you
 immediately whether the token and chat ID actually work, rather than letting
 you find out by missing the alert you were waiting for.
@@ -84,7 +90,7 @@ the current interval.
 | **Visible (public)** | The profile page loaded normally. |
 | **Visible (private account)** | The profile exists and shows as private — reachable, just not open. |
 | **Blocked or unavailable** | Instagram says the page is not available. Blocked, deactivated, renamed, or deleted — the page cannot tell these apart. |
-| **Check failed** | The check itself broke: network, browser, or login trouble. Not a statement about the profile. |
+| **Check failed** | The check itself broke: network, browser, or login trouble — including landing on the sign-in page, which means the session expired. Not a statement about the profile. |
 | **Unknown** | No check has completed yet. |
 
 An event is recorded when the status *changes*, not on every check. The first
@@ -172,6 +178,12 @@ being flagged.
 - **Stop the run once the profile becomes visible** — on by default. Turn it
   off to keep logging changes indefinitely.
 - **Quiet hours** — pause overnight. Activity at 4am looks less like a person.
+- **Wait after a failure** — after a failed check the app waits this long, and
+  doubles it while failures continue. Failures usually mean rate limiting or a
+  dead session, and asking harder makes both worse. Watching several handles
+  multiplies the request rate, which makes this matter more.
+- **Page load timeout** — how long to wait for a page before reading whatever
+  arrived.
 
 ---
 
@@ -260,6 +272,13 @@ Instagram tends to challenge logins from an unfamiliar browser profile.
 If it used to work and suddenly does not, the saved session has probably been
 invalidated. Press **Forget saved session** in Settings and start again — that
 clears the stored cookies and signs in from scratch.
+
+**Everything says "Check failed" and mentions the session.**
+The app landed on Instagram's sign-in page instead of a profile, which means
+the session is no longer valid. This is deliberately reported as a failure
+rather than a result: a login page carries none of the "unavailable" markers,
+so treating it as a normal read would announce that the profile is visible when
+nothing of the sort happened. Forget the saved session and sign in again.
 
 **Two-factor authentication is on.**
 Logged-in mode cannot complete a 2FA challenge. Use Anonymous mode, or a

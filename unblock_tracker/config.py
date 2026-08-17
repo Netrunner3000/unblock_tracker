@@ -75,6 +75,10 @@ class Settings:
     # --- What kind of check to run ---
     check_mode: str = CHECK_MODE_LOGIN
     notifier: str = NOTIFIER_NONE
+    # Which tracked-signal changes are worth a message. Visibility always is —
+    # it is the point of the app. Raw counts are off by default because an
+    # active account moves them constantly and would drown the useful alerts.
+    notify_kinds: list[str] = field(default_factory=lambda: ["members", "flag"])
 
     # --- Pacing ---
     interval_min_seconds: int = 10
@@ -86,6 +90,13 @@ class Settings:
     night_break_start_hour: int = 2
     night_break_end_hour: int = 6
 
+    # After a failed check, wait this long before the next one, doubling while
+    # failures continue. Being rate-limited and hammering harder is the worst
+    # possible response, and watching several handles multiplies the request
+    # rate that got you limited.
+    backoff_seconds: int = 60
+    backoff_max_seconds: int = 1800
+
     # --- Browser / detection profile (login mode only) ---
     headless: bool = True
     browser_binary: str = ""  # blank = Selenium's default Chrome
@@ -95,6 +106,10 @@ class Settings:
     restart_after_checks: int = 100  # 0 = never restart mid-run
     verify_login: bool = True
     login_attempts: int = 3
+    # How long to wait for a page to render before classifying whatever loaded.
+    # Replaces the fixed sleeps that were both too short on a slow connection
+    # and wasted time on a fast one.
+    page_timeout_seconds: int = 20
     # Reuse Instagram's login cookies between runs instead of signing in again
     # each time. Repeated scripted logins are the likeliest thing to get an
     # account challenged, and a browser restart mid-run used to mean a fresh one.

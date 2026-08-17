@@ -315,7 +315,7 @@ def test_the_first_measurement_is_a_baseline_not_an_event(tmp_path, monkeypatch)
     assert engine.snapshots.load("watched").counts == {"followers": 100}
 
 
-def test_a_follower_count_moving_is_recorded_and_notified(tmp_path, monkeypatch):
+def test_a_follower_count_moving_is_recorded(tmp_path, monkeypatch):
     engine, _probe, notifier, events = build_engine(
         tmp_path,
         monkeypatch,
@@ -330,7 +330,40 @@ def test_a_follower_count_moving_is_recorded_and_notified(tmp_path, monkeypatch)
     assert events[0].signal == "followers"
     assert events[0].target == "watched"
     assert "+3" in events[0].detail
+    # Counts are recorded but not announced by default — an active account
+    # moves them constantly and would drown the alerts that matter.
+    assert notifier.sent == []
+
+
+def test_counts_are_announced_once_asked_for(tmp_path, monkeypatch):
+    engine, _probe, notifier, _events = build_engine(
+        tmp_path,
+        monkeypatch,
+        [result_with(counts={"followers": 100}), result_with(counts={"followers": 103})],
+        stop_on_unblock=False,
+        notify_kinds=["count"],
+    )
+
+    run_engine(engine)
+
     assert notifier.sent and "watched" in notifier.sent[0][1]
+
+
+def test_membership_changes_are_announced_by_default(tmp_path, monkeypatch):
+    """Someone unfollowing is rare and meaningful, unlike a count ticking."""
+    engine, _probe, notifier, _events = build_engine(
+        tmp_path,
+        monkeypatch,
+        [
+            result_with(members={"followers": ["alice", "bob"]}),
+            result_with(members={"followers": ["alice"]}),
+        ],
+        stop_on_unblock=False,
+    )
+
+    run_engine(engine)
+
+    assert notifier.sent, "membership changes should notify without configuration"
 
 
 def test_someone_unfollowing_is_recorded_by_name(tmp_path, monkeypatch):
@@ -490,3 +523,64 @@ def test_a_single_target_still_stops_on_unblock(tmp_path, monkeypatch):
     )
 
     assert "visible" in run_engine(engine)
+
+
+# ----------------------------------------------------------------------
+# Backoff after failures
+# ----------------------------------------------------------------------
+def test_no_backoff_while_checks_succeed(tmp_path):
+    engine = monitor.MonitorEngine(make_settings(tmp_path), "pw")
+    assert engine._backoff(0) == 0
+
+
+def test_backoff_doubles_with_each_consecutive_failure(tmp_path):
+    engine = monitor.MonitorEngine(
+        make_settings(tmp_path, backoff_seconds=30, backoff_max_seconds=100000), "pw"
+    )
+    assert [engine._backoff(n) for n in (1, 2, 3, 4)] == [30, 60, 120, 240]
+
+
+def test_backoff_stops_at_the_ceiling(tmp_path):
+    engine = monitor.MonitorEngine(
+        make_settings(tmp_path, backoff_seconds=60, backoff_max_seconds=300), "pw"
+    )
+    assert engine._backoff(10) == 300
+    assert engine._backoff(50) == 300, "must not overflow past the cap"
+
+
+def test_a_failing_check_triggers_a_wait(tmp_path, monkeypatch):
+    """Being rate-limited and asking harder is the worst possible response."""
+    error = checker.CheckResult(checker.ERROR, "rate limited")
+    waits: list[float] = []
+
+    engine, _probe, _notifier, _events = build_engine(
+        tmp_path, monkeypatch, [error, error, error],
+        stop_on_unblock=False, backoff_seconds=10,
+    )
+    real_sleep = engine._sleep
+    monkeypatch.setattr(
+        engine, "_sleep", lambda s: (waits.append(s), real_sleep(0))[1]
+    )
+
+    run_engine(engine)
+
+    assert waits, "expected at least one wait"
+    assert max(waits) >= 10, f"no backoff applied: {waits}"
+
+
+def test_backoff_resets_after_a_successful_check(tmp_path, monkeypatch):
+    error = checker.CheckResult(checker.ERROR, "transient")
+    waits: list[float] = []
+
+    engine, _probe, _notifier, _events = build_engine(
+        tmp_path, monkeypatch, [error, BLOCKED, BLOCKED],
+        stop_on_unblock=False, backoff_seconds=10,
+    )
+    real_sleep = engine._sleep
+    monkeypatch.setattr(
+        engine, "_sleep", lambda s: (waits.append(s), real_sleep(0))[1]
+    )
+
+    run_engine(engine)
+
+    assert waits[-1] == 0, f"a success should clear the penalty, got {waits}"

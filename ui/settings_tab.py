@@ -269,6 +269,19 @@ class SettingsTab(QWidget):
         pushbullet_form.addRow(theme.label("Access token"), self.pushbullet_token)
         layout.addWidget(self.pushbullet_box)
 
+        self.notify_members = QCheckBox("Followers arriving or leaving, by name")
+        self.notify_flags = QCheckBox("Private, restricted and close-friends changes")
+        self.notify_counts = QCheckBox("Follower, following and post counts")
+        for box in (self.notify_members, self.notify_flags, self.notify_counts):
+            layout.addWidget(box)
+
+        self.notify_hint = theme.hint(
+            "Visibility changes always alert — that is the point of the app. Counts "
+            "are off by default because an active account moves them constantly and "
+            "would bury the alerts that matter. Everything is recorded either way."
+        )
+        layout.addWidget(self.notify_hint)
+
         self.test_button = QPushButton("Send test notification")
         self.test_button.clicked.connect(self._send_test)
         row = QHBoxLayout()
@@ -313,7 +326,25 @@ class SettingsTab(QWidget):
         form.addRow(theme.label(""), self.stop_on_unblock)
         form.addRow(theme.label(""), self.night_break)
         form.addRow(theme.label("Quiet hours"), self.quiet_row)
+
+        self.backoff = QSpinBox()
+        self.backoff.setRange(0, 3600)
+        self.backoff.setSuffix(" s")
+        self.backoff.setSpecialValueText("no backoff")
+        form.addRow(theme.label("Wait after a failure"), _row(self.backoff))
+
+        self.page_timeout = QSpinBox()
+        self.page_timeout.setRange(5, 120)
+        self.page_timeout.setSuffix(" s")
+        form.addRow(theme.label("Page load timeout"), _row(self.page_timeout))
         layout.addLayout(form)
+
+        self.schedule_hint = theme.hint(
+            "After a failed check the wait doubles while failures continue. Failures "
+            "usually mean rate limiting or a dead session, and asking harder makes "
+            "both worse."
+        )
+        layout.addWidget(self.schedule_hint)
         return frame
 
     def _browser_card(self) -> QWidget:
@@ -460,6 +491,9 @@ class SettingsTab(QWidget):
         self.watchlist.setPlainText("\n".join(settings.watchlist))
 
         self.notifier.setCurrentIndex(max(0, self.notifier.findData(settings.notifier)))
+        self.notify_members.setChecked("members" in settings.notify_kinds)
+        self.notify_flags.setChecked("flag" in settings.notify_kinds)
+        self.notify_counts.setChecked("count" in settings.notify_kinds)
         self.telegram_token.setText(secrets.get(secrets.TELEGRAM_BOT_TOKEN, account))
         self.telegram_chat_id.setText(settings.telegram_chat_id)
         self.pushbullet_token.setText(secrets.get(secrets.PUSHBULLET_TOKEN, account))
@@ -470,6 +504,8 @@ class SettingsTab(QWidget):
         self.stop_on_unblock.setChecked(settings.stop_on_unblock)
         self.night_break.setChecked(settings.night_break_enabled)
         self.quiet_row.setEnabled(settings.night_break_enabled)
+        self.backoff.setValue(settings.backoff_seconds)
+        self.page_timeout.setValue(settings.page_timeout_seconds)
         self.night_start.setValue(settings.night_break_start_hour)
         self.night_end.setValue(settings.night_break_end_hour)
 
@@ -505,11 +541,22 @@ class SettingsTab(QWidget):
             telegram_chat_id=self.telegram_chat_id.text().strip(),
             check_mode=self.check_mode.currentData(),
             notifier=self.notifier.currentData(),
+            notify_kinds=[
+                kind
+                for kind, box in (
+                    ("members", self.notify_members),
+                    ("flag", self.notify_flags),
+                    ("count", self.notify_counts),
+                )
+                if box.isChecked()
+            ],
             interval_min_seconds=self.interval_min.value(),
             interval_max_seconds=self.interval_max.value(),
             max_runtime_minutes=self.max_runtime.value(),
             stop_on_unblock=self.stop_on_unblock.isChecked(),
             night_break_enabled=self.night_break.isChecked(),
+            backoff_seconds=self.backoff.value(),
+            page_timeout_seconds=self.page_timeout.value(),
             night_break_start_hour=self.night_start.value(),
             night_break_end_hour=self.night_end.value(),
             headless=self.headless.isChecked(),

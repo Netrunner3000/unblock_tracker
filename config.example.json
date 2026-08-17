@@ -5,6 +5,10 @@
   "telegram_chat_id": "",
   "check_mode": "login",
   "notifier": "none",
+  "notify_kinds": [
+    "members",
+    "flag"
+  ],
   "interval_min_seconds": 10,
   "interval_max_seconds": 20,
   "max_runtime_minutes": 120,
@@ -12,6 +16,8 @@
   "night_break_enabled": true,
   "night_break_start_hour": 2,
   "night_break_end_hour": 6,
+  "backoff_seconds": 60,
+  "backoff_max_seconds": 1800,
   "headless": true,
   "browser_binary": "",
   "chromedriver_path": "",
@@ -25,6 +31,7 @@
   "restart_after_checks": 100,
   "verify_login": true,
   "login_attempts": 3,
+  "page_timeout_seconds": 20,
   "persist_session": true,
   "use_proxy": false,
   "proxy_source_url": "https://api.proxyscrape.com/v2/?request=getproxies&protocol=http&timeout=3000&country=all",

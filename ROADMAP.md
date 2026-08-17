@@ -19,6 +19,17 @@ future-you doesn't have to re-derive it.
   relationship flags, all as diffs between persisted snapshots
   (`signals.py`). Markup knowledge is isolated in pure parsers
   (`parsing.py`) so the fragile half is fixture-testable.
+- [x] **Classify pages with a pure function** — `checker.classify` is separate
+  from fetching, so the verdict is fixture-testable. Caught a false positive
+  along the way: a login page carries none of the "unavailable" markers, so an
+  expired session used to read as a visible profile and would have announced an
+  unblock that never happened. It is now an explicit error.
+- [x] **Explicit waits instead of fixed sleeps** — `WebDriverWait` on real
+  conditions; `page_timeout_seconds` replaces the hard-coded 3s/5s pauses.
+- [x] **Per-signal notification toggles** — counts are recorded but silent by
+  default; membership and relationship changes alert.
+- [x] **Back off after failures** — the wait doubles while checks keep failing,
+  up to a ceiling. Rate limiting is the usual cause and hammering makes it worse.
 - [x] **Watch several profiles in one run** — `Settings.watchlist`; the engine
   cycles targets and keeps per-target history. `stop_on_unblock` applies only
   to a lone target, since stopping would abandon the others.
@@ -34,25 +45,7 @@ follower-dialog scroller (`BrowserChecker._scroll_dialog`) is the least. Save
 real pages as fixtures the first time you run this for real, and treat the
 current selectors as a starting point.
 
-### 1. Test `checker.py` against saved HTML fixtures
-The "is this profile blocked?" parsing is the most fragile code in the project
-and has **no tests** — every other module is covered. It works by string- and
-XPath-matching Instagram's markup, which will change without warning.
-
-Save three real profile pages (blocked / private / public) as fixtures under
-`tests/fixtures/` and assert `BrowserChecker.check()` classifies each one. When
-Instagram changes its markup, that suite is what tells you, instead of the app
-quietly reporting "blocked" forever.
-
-Strip any real handles from the fixtures before committing them.
-
-### 2. Replace the fixed `time.sleep`s with explicit waits
-[`checker.py`](unblock_tracker/checker.py) has five hard-coded sleeps (3s, 5s).
-They are simultaneously too short on a slow connection and wasted time on a
-fast one, which makes checks both flaky and needlessly slow. `WebDriverWait`
-with a real condition fixes both.
-
-### 3. Say something useful when the target is already visible
+### 1. Say something useful when the target is already visible
 Starting a run against an already-visible profile stops immediately with
 **zero** events, notifications and CSV rows — verified. It is defensible
 (nothing *changed*) but reads as a broken run. Either record a baseline event

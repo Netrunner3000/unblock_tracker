@@ -147,6 +147,29 @@ def parse_handles(html: str) -> list[str]:
 # ----------------------------------------------------------------------
 # Relationship signals
 # ----------------------------------------------------------------------
+def looks_like_login_wall(html: str) -> bool:
+    """True when this is Instagram's sign-in page rather than a profile.
+
+    This matters more than it looks. If a session expires mid-run, navigating
+    to a profile lands on the login page — which carries none of the "not
+    available" markers, so a naive check reads it as a perfectly visible
+    profile and announces that you have been unblocked.
+    """
+    signals = (
+        'name="password"',
+        "loginForm",
+        "Sign up to see photos and videos from friends",
+        "Phone number, username, or email",
+    )
+    if not any(marker in html for marker in signals):
+        return False
+
+    # A profile page can legitimately contain a login prompt in a modal, so
+    # require the absence of profile content before calling it a wall.
+    profile_markers = ('"edge_followed_by"', 'property="og:description"', "Followers")
+    return not any(marker in html for marker in profile_markers)
+
+
 def parse_close_friends(html: str) -> bool | None:
     """Whether a visible story is a Close Friends story.
 

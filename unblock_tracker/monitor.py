@@ -111,6 +111,18 @@ class MonitorEngine:
         """Interruptible sleep. Returns False if a stop was requested."""
         return not self._stop.wait(seconds)
 
+    def _backoff(self, failures: int) -> int:
+        """Extra seconds to wait after consecutive failures.
+
+        Doubles each time and stops at a ceiling. Failures usually mean rate
+        limiting or a dead session, and the worst response to either is to keep
+        asking at full speed.
+        """
+        if failures <= 0:
+            return 0
+        grown = self.settings.backoff_seconds * (2 ** (failures - 1))
+        return min(grown, self.settings.backoff_max_seconds)
+
     def _in_night_break(self, now: datetime) -> bool:
         if not self.settings.night_break_enabled:
             return False
@@ -157,6 +169,7 @@ class MonitorEngine:
         last_status: dict[str, str] = dict.fromkeys(targets, checker.UNKNOWN)
         last_fingerprint: dict[str, str] = {}
         checks = 0
+        failures = 0
         reason = "Stopped."
 
         try:
@@ -212,6 +225,11 @@ class MonitorEngine:
                             broke_out = True
                             break
 
+                    if result.status == checker.ERROR:
+                        failures += 1
+                    else:
+                        failures = 0
+
                     last_status[target] = result.status
                     if result.fingerprint:
                         last_fingerprint[target] = result.fingerprint
@@ -235,7 +253,13 @@ class MonitorEngine:
                 wait = random.randint(
                     settings.interval_min_seconds, settings.interval_max_seconds
                 )
-                if not self._sleep(wait):
+                penalty = self._backoff(failures)
+                if penalty:
+                    self.log(
+                        f"{failures} failed check{'s' if failures > 1 else ''} in a row "
+                        f"— waiting {penalty}s before trying again."
+                    )
+                if not self._sleep(wait + penalty):
                     break
         finally:
             probe.stop()
@@ -289,6 +313,9 @@ class MonitorEngine:
             )
             self.store.record(event)
             self.on_event(event)
+
+            if change.kind not in self.settings.notify_kinds:
+                continue  # recorded, just not worth interrupting anyone for
 
             try:
                 notifier.send(f"@{target}: {change.detail}")
