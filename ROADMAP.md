@@ -61,16 +61,17 @@ it. A menu-bar item, or a launchd agent driving the engine headlessly, fits the
 job far better than a window you must not close. `MonitorEngine` has no Qt
 dependency, so a headless runner is mostly wiring.
 
-### Watch more than one profile
-Currently one target per install. The engine is per-`Settings`, so multiple
-targets means either multiple engines or a rework of the run loop.
+### Throttle repeated alerts
+Per-kind toggles stopped counts from spamming, but a *flapping* status still
+sends one alert per flip. A minimum gap between messages, or "quiet after N
+alerts", would finish the job.
 
-### Throttle notifications
-A flapping status will send an alert per flip. A minimum gap between messages,
-or a "quiet after N alerts" rule, would stop that.
+### Chart the snapshot history
+`snapshots.json` accumulates counts over time and nothing draws them. The data
+layer for the analytics fork already exists here.
 
 ### Continuous integration
-109 tests that nothing runs automatically. A GitHub Action on push is ten
+209 tests that nothing runs automatically. A GitHub Action on push is ten
 minutes of work and worth it if this repo is ever published.
 
 ---
